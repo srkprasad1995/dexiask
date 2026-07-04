@@ -39,6 +39,9 @@ const (
 type ChatRequest struct {
 	// ConversationID is the existing conversation to continue. Empty starts a new one.
 	ConversationID string
+	// UserID is the resolved GitHub user id owning this turn (dev id in fallback
+	// mode). Conversations and custom MCP servers are scoped to it.
+	UserID string
 	// Messages holds the new user turn (single element expected). History is
 	// loaded from the database; the client does not replay it.
 	Messages []agent.Message
@@ -67,6 +70,13 @@ type ChatService interface {
 	Stop(conversationID string) bool
 }
 
+// MemoryDigester returns the per-user memory digest injected into the ask system
+// prompt. *memory.Client satisfies it; tests provide a fake. Best-effort: it
+// returns "" on any failure.
+type MemoryDigester interface {
+	Digest(ctx context.Context, userID string) string
+}
+
 type chatService struct {
 	registry      *agent.Registry
 	runMgr        *agent.RunManager
@@ -76,11 +86,13 @@ type chatService struct {
 	mcpRepo       repository.MCPServerRepository
 	assembler     ContextAssembler
 	attachmentSvc AttachmentService
+	memory        MemoryDigester
 	logger        *logger.Logger
 
 	model          string
 	maxTokens      int
 	indexerServers []agent.MCPServerConfig
+	memoryMCPURL   string
 }
 
 // NewChatService creates a new ChatService. indexerMCPURL, when non-empty, is
@@ -96,10 +108,12 @@ func NewChatService(
 	mcpRepo repository.MCPServerRepository,
 	assembler ContextAssembler,
 	attachmentSvc AttachmentService,
+	memoryDigester MemoryDigester,
 	log *logger.Logger,
 	modelName string,
 	maxTokens int,
 	indexerMCPURL string,
+	memoryMCPURL string,
 ) ChatService {
 	var indexerServers []agent.MCPServerConfig
 	if strings.TrimSpace(indexerMCPURL) != "" {
@@ -119,10 +133,12 @@ func NewChatService(
 		mcpRepo:        mcpRepo,
 		assembler:      assembler,
 		attachmentSvc:  attachmentSvc,
+		memory:         memoryDigester,
 		logger:         log,
 		model:          modelName,
 		maxTokens:      maxTokens,
 		indexerServers: indexerServers,
+		memoryMCPURL:   strings.TrimSpace(memoryMCPURL),
 	}
 }
 
@@ -143,6 +159,13 @@ func (s *chatService) Start(ctx context.Context, req ChatRequest) (*ChatStartRes
 		return nil, pkgerrors.InvalidArgumentf("runtime %q is not available", claudeRuntime)
 	}
 
+	// Resolve the owning user. Non-HTTP callers (Slack) leave it empty and fall
+	// back to the dev/service identity.
+	userID := req.UserID
+	if userID == "" {
+		userID = config.FixedUserID
+	}
+
 	// Use a detached context so a client disconnect doesn't abort the DB write.
 	dbCtx := context.WithoutCancel(ctx)
 
@@ -158,7 +181,7 @@ func (s *chatService) Start(ctx context.Context, req ChatRequest) (*ChatStartRes
 		if req.ConversationID == "" {
 			conv, err := s.convRepo.Create(txCtx, &model.CreateConversationInput{
 				WorkspaceID: config.FixedWorkspaceID,
-				UserID:      config.FixedUserID,
+				UserID:      userID,
 				Title:       deriveTitle(userContent),
 			})
 			if err != nil {
@@ -170,6 +193,10 @@ func (s *chatService) Start(ctx context.Context, req ChatRequest) (*ChatStartRes
 			conv, err := s.convRepo.GetByID(txCtx, req.ConversationID)
 			if err != nil {
 				return err
+			}
+			// A user may only continue their own conversation.
+			if conv.UserID != userID {
+				return pkgerrors.NotFoundf("conversation %s not found", req.ConversationID)
 			}
 			convID = conv.ID
 			convSessionID = conv.SessionID
@@ -241,12 +268,20 @@ func (s *chatService) Start(ctx context.Context, req ChatRequest) (*ChatStartRes
 	}
 
 	jobMessages := s.assembler.Assemble(history)
-	mcpServers := s.resolveMCPServers(dbCtx)
+	mcpServers := s.resolveMCPServers(dbCtx, userID)
+
+	// Inject the per-user memory digest into the system prompt (best-effort).
+	systemPrompt := agent.SystemPromptForRole(askRole)
+	if s.memory != nil {
+		if d := s.memory.Digest(dbCtx, userID); d != "" {
+			systemPrompt += d
+		}
+	}
 
 	job := agent.Job{
 		Role:             askRole,
 		Model:            s.model,
-		SystemPrompt:     agent.SystemPromptForRole(askRole),
+		SystemPrompt:     systemPrompt,
 		AllowedTools:     agent.AllowedToolsForRole(askRole),
 		PermissionMode:   permissionMode,
 		SkillsPath:       engineSkills,
@@ -275,15 +310,33 @@ func (s *chatService) Start(ctx context.Context, req ChatRequest) (*ChatStartRes
 // indexer server followed by every enabled user-defined server. A failure to
 // load the custom servers is logged and degrades to indexer-only rather than
 // failing the turn.
-func (s *chatService) resolveMCPServers(ctx context.Context) []agent.MCPServerConfig {
-	servers := make([]agent.MCPServerConfig, 0, len(s.indexerServers)+1)
+func (s *chatService) resolveMCPServers(ctx context.Context, userID string) []agent.MCPServerConfig {
+	servers := make([]agent.MCPServerConfig, 0, len(s.indexerServers)+2)
 	servers = append(servers, s.indexerServers...)
+
+	// The memory MCP is built per turn because its headers carry the caller's
+	// identity (a static server, like the indexer, cannot vary per user).
+	if s.memoryMCPURL != "" {
+		servers = append(servers, agent.MCPServerConfig{
+			Name:        "memory",
+			Type:        "http",
+			URL:         s.memoryMCPURL,
+			Description: "Long-term memory: view/search prior knowledge and record observations (memory_view/search/write).",
+			Headers: map[string]string{
+				"X-Workspace-Id":    config.FixedWorkspaceID,
+				"X-User-Id":         userID,
+				"X-Role":            askRole,
+				"X-Writable-Scopes": "user,repo",
+			},
+		})
+	}
 
 	if s.mcpRepo == nil {
 		return servers
 	}
 	custom, err := s.mcpRepo.List(ctx, &model.ListMCPServersFilter{
 		WorkspaceID: config.FixedWorkspaceID,
+		UserID:      userID,
 		EnabledOnly: true,
 	})
 	if err != nil {

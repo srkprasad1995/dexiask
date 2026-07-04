@@ -20,7 +20,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..context import IndexerContext, RepoNotIndexedError
-from ..docs import load_skeleton
+from ..docs import load_domain_docs, load_skeleton
+from ..store import CONTENT_CODE, CONTENT_DOC
 from . import formatting as fmt
 
 log = logging.getLogger("indexer.tools")
@@ -156,6 +157,7 @@ def _search_hits(ctx: IndexerContext, args: dict) -> list[tuple[str, Any]]:
                 repo.collection, qv, limit=fetch_k,
                 lang=args.get("lang"), path_prefix=args.get("path_prefix"),
                 symbol_kind=args.get("symbol_kind"),
+                content_type=args.get("content_type"),
             )
         except Exception:
             # Global (all-repos) search: skip repos that aren't searchable yet
@@ -166,8 +168,11 @@ def _search_hits(ctx: IndexerContext, args: dict) -> list[tuple[str, Any]]:
             continue
         for h in found:
             lang = h.payload.get("lang") or ""
-            if code_only and lang in _NONCODE_LANGS:
-                continue  # drop config/asset/text noise (the "text" fallback / unknown)
+            is_doc = (h.payload.get("content_type") or CONTENT_CODE) == CONTENT_DOC
+            # `code_only` drops config/asset/text noise, but NEVER generated domain
+            # docs (whose lang is empty) — they are high-signal by construction.
+            if code_only and not is_doc and lang in _NONCODE_LANGS:
+                continue
             if min_score > 0 and h.score < min_score:
                 continue
             hits.append((rid, h))
@@ -185,7 +190,9 @@ async def semantic_search(ctx: IndexerContext, args: dict) -> str:
     merged = [
         {
             "repo": rid,
+            "content_type": h.payload.get("content_type") or CONTENT_CODE,
             "path": h.payload.get("path", ""),
+            "title": h.payload.get("title") or "",
             "lines": f"{h.payload.get('start_line', '')}-{h.payload.get('end_line', '')}",
             "lang": h.payload.get("lang") or "",
             "symbol": h.payload.get("symbol") or "",
@@ -210,7 +217,9 @@ def search_json(ctx: IndexerContext, args: dict) -> dict[str, Any]:
     results = [
         {
             "repo": rid,
+            "contentType": h.payload.get("content_type") or CONTENT_CODE,
             "path": h.payload.get("path", ""),
+            "title": h.payload.get("title") or "",
             "startLine": h.payload.get("start_line"),
             "endLine": h.payload.get("end_line"),
             "language": h.payload.get("lang") or "",
@@ -242,6 +251,22 @@ async def get_overview(ctx: IndexerContext, args: dict) -> str:
         summary["overview"] = skel["overview"]
     summary["top_symbols"] = skel.get("top_symbols", [])[:15]
     return fmt.render_obj(summary, _fmt(ctx, args))
+
+
+async def get_domain_docs(ctx: IndexerContext, args: dict) -> str:
+    """List the generated domain-knowledge docs for a repo (title/category/body)."""
+    repo = ctx.repo_config(args["repo"])
+    docs = load_domain_docs(ctx.settings.data_dir, repo.id, repo.primary_branch)
+    if not docs:
+        return fmt.render_obj(
+            {"error": f"no domain docs for {repo.id!r} — enable domain docs and index it"},
+            _fmt(ctx, args),
+        )
+    rows = [{"title": d["title"], "category": d["category"], "body": d["body"]} for d in docs]
+    return fmt.render_results(
+        rows, fmt=_fmt(ctx, args), limit=_limit(ctx, args), max_tokens=_maxtok(ctx, args),
+        extra={"repo": repo.id, "branch": repo.primary_branch},
+    )
 
 
 async def get_docs(ctx: IndexerContext, args: dict) -> str:
@@ -332,18 +357,23 @@ class Tool:
 def build_tools() -> list[Tool]:
     return [
         Tool("semantic_search",
-             "Semantic code search by meaning. Returns ranked hits (repo, path, lines, lang, "
-             "symbol, symbol_kind, score, code); use read_range/get_chunk for full source. "
-             "Code-only by default (config/asset/text noise is dropped); set code_only=false to "
-             "include docs. Supports cross-repo via 'repos'; omit repo/repos for a global search.",
+             "Semantic search by meaning over code AND generated domain-knowledge docs. "
+             "Returns ranked hits (repo, content_type, path/title, lines, lang, symbol, score, "
+             "code); use read_range/get_chunk for full source. Generated docs (content_type='doc') "
+             "are always included; code_only=true (default) only drops config/asset/text noise. "
+             "Pass content_type='doc' to search domain knowledge only. Supports cross-repo via "
+             "'repos'; omit repo/repos for a global search.",
              {"type": "object", "properties": {
                  "query": {"type": "string"}, "repo": _REPO,
                  "repos": {"type": "array", "items": {"type": "string"},
                            "description": "search several repos at once"},
                  "lang": {"type": "string"},
+                 "content_type": {"type": "string", "enum": ["code", "doc"],
+                                  "description": "restrict to code or generated docs"},
                  "path_prefix": {"type": "string"}, "symbol_kind": {"type": "string"},
                  "code_only": {"type": "boolean",
-                               "description": "restrict to source code (default true)"},
+                               "description": "drop config/asset/text noise (default true); "
+                                              "never drops generated docs"},
                  "min_score": {"type": "number",
                                "description": "drop hits below this cosine score"},
                  "limit": _LIMIT, "max_tokens": _MAXTOK, "format": _FMT,
@@ -423,6 +453,12 @@ def build_tools() -> list[Tool]:
                  "repo": _REPO, "path": {"type": "string"},
                  "limit": _LIMIT, "max_tokens": _MAXTOK, "format": _FMT,
              }, "required": ["repo"]}, get_docs),
+        Tool("get_domain_docs",
+             "Generated domain-knowledge docs (architecture, modules, concepts) for a repo. "
+             "High-level 'why' knowledge to read before diving into code.",
+             {"type": "object", "properties": {
+                 "repo": _REPO, "limit": _LIMIT, "max_tokens": _MAXTOK, "format": _FMT,
+             }, "required": ["repo"]}, get_domain_docs),
         Tool("list_repos", "List the repos this indexer tracks.",
              {"type": "object", "properties": {"format": _FMT}}, list_repos),
     ]

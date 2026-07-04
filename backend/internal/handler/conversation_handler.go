@@ -35,9 +35,13 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 			pageSize = n
 		}
 	}
+	p, ok := requirePrincipal(w, r)
+	if !ok {
+		return
+	}
 	filter := &model.ListConversationsFilter{
 		WorkspaceID: config.FixedWorkspaceID,
-		UserID:      config.FixedUserID,
+		UserID:      p.UserID,
 		PageSize:    pageSize,
 		PageToken:   r.URL.Query().Get("page_token"),
 	}
@@ -67,7 +71,11 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	msgs, err := h.svc.GetMessages(r.Context(), config.FixedWorkspaceID, config.FixedUserID, convID)
+	principal, ok := requirePrincipal(w, r)
+	if !ok {
+		return
+	}
+	msgs, err := h.svc.GetMessages(r.Context(), config.FixedWorkspaceID, principal.UserID, convID)
 	if err != nil {
 		h.logger.Error("GetMessages failed", zap.Error(err), zap.String("conversation_id", convID))
 		writeError(w, http.StatusNotFound, "conversation not found")

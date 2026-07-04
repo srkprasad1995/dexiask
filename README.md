@@ -5,7 +5,8 @@
 **Chat with a Claude agent over your codebase — with semantic code search.**
 
 An open-source AI **Ask** platform for your codebase.
-One user, one Claude engine, one mounted codebase, one Qdrant-backed indexer.
+Sign in with GitHub, chat with a Claude engine over one mounted codebase, backed by a
+Qdrant indexer and per-user long-term memory.
 Bring your own API keys, `docker compose up`, and go.
 
 🌐 **[dexiask.com](https://dexiask.com)**
@@ -20,13 +21,19 @@ Dexiask is a small, self-hostable stack for **asking questions about a codebase*
 and getting rich, streamed answers from a Claude agent that can read your files,
 search the web, and run **semantic code search** over an indexed repository.
 
-It is deliberately minimal — no accounts, no teams, no projects, no config UI:
+It stays deliberately focused — one workspace (your mounted codebase), no teams, no
+projects, no config UI — while supporting multiple users:
 
 - Claude agent (ask mode, read-only)
+- **GitHub sign-in** — per-user conversation history, git tokens, and repo-access checks
+  (or run with no OAuth app configured for a single local dev user)
 - Streaming chat with rich rendering (code, mermaid, math)
 - File upload (attach files to a message)
 - Custom skills (drop-in `SKILL.md` packs)
-- Semantic code indexer (Qdrant + Voyage), default branch
+- Semantic code indexer (Qdrant + Voyage), default branch, plus optional **LLM-generated
+  domain docs** searchable alongside code
+- **Long-term memory** — the agent records observations and a "dream" judge consolidates
+  them into durable user/repo/global memory injected into later answers
 - Two-way Slack bot (Socket Mode)
 
 ## Why Dexiask
@@ -58,32 +65,38 @@ it directly via semantic + lexical search.
 ```
                             ┌─────────────┐
  Browser ──HTTP/SSE──▶ web  │  Next.js    │
-                       BFF  │  (chat +    │
-                            │   indexer)  │
+                       BFF  │  (login +   │
+                            │   chat + …) │
                             └──────┬──────┘
                                    │ SSE
                             ┌──────▼──────┐        ┌───────────┐
  Slack ──Socket Mode──────▶ backend      │──MCP──▶│  indexer  │──▶ Qdrant
                             │  (Go)       │        │ (Python)  │──▶ git mirrors (FS)
                             │  chat · SSE │        └───────────┘
-                            │  attachments│──Agent Job Protocol──┐
-                            │  Postgres   │                      ▼
-                            └─────────────┘               ┌─────────────┐
-                                                          │  engine     │
-                                                          │ (Python,    │
-                                                          │  Claude SDK)│
-                                                          └─────────────┘
+                            │  auth       │──MCP──▶┌───────────┐
+                            │  attachments│        │  memory   │──▶ FS volume
+                            │  Postgres   │        │   (Go)    │
+                            └──────┬──────┘        └───────────┘
+                                   │ Agent Job Protocol
+                                   ▼
+                            ┌─────────────┐
+                            │  engine     │
+                            │ (Python,    │
+                            │  Claude SDK)│
+                            └─────────────┘
 ```
 
-- **web** — Next.js BFF + chat UI + indexer page. The only thing the browser talks to.
+- **web** — Next.js BFF + login + chat/indexer/memory UI. The only thing the browser talks to.
 - **backend** — Go. Streams chat as SSE, bridges to the engine over the **Agent Job
-  Protocol**, stores conversations/messages/attachments in Postgres, proxies the
-  indexer, and runs the Slack bot.
+  Protocol**, handles **GitHub OAuth** + sessions, stores conversations/messages/
+  attachments in Postgres, proxies the indexer + memory, and runs the Slack bot.
 - **engine** — Python. Runs the **Claude Agent SDK**; reads `ANTHROPIC_API_KEY` from
   env; loads skill packs from `/skills`.
-- **indexer** — Python. Semantic + lexical code search over the mounted codebase,
-  exposed to the engine as an MCP server. Qdrant for vectors, the filesystem for git
-  mirrors.
+- **indexer** — Python. Semantic + lexical code search (and optional generated domain
+  docs) over the mounted codebase, exposed to the engine as an MCP server. Qdrant for
+  vectors, the filesystem for git mirrors.
+- **memory** — Go. FS-backed user/repo/global memory exposed as an MCP server, with a
+  periodic "dream" consolidation judge. No database.
 - **qdrant / postgres** — vector store and relational store.
 
 One **shared `/workspace` mount** is the codebase the agent reads and the indexer
@@ -118,23 +131,43 @@ The indexer indexes the **default branch** of any git repo under your mounted
 
 ### Private repos (git token)
 
-To index a **private** repository, set a git access token on the **Indexer**
-page → **Git access token** → paste a token (e.g. a GitHub PAT) → **Save**. The
-indexer uses it to clone/fetch over HTTPS. The token is held server-side by the
-indexer, persisted to its data volume with `0600` permissions, and **never
-returned to the browser** (the UI only shows whether one is configured). It is
-injected as an `Authorization` header via `GIT_CONFIG_*`, never placed in a
-mirror's stored remote URL. Clear it any time with **Clear**. This is a
-single-user local tool, so plaintext-at-rest is acceptable.
+When **GitHub sign-in is enabled**, indexing a **private** repo just works: the
+backend uses your own GitHub OAuth token to clone it (and first checks you actually
+have access), injected as `X-Git-Token` to the indexer — no manual token needed.
+
+Otherwise (dev-fallback mode), set a git access token on the **Indexer** page →
+**Git access token** → paste a token (e.g. a GitHub PAT) → **Save**. It is held
+server-side by the indexer, persisted `0600`, and **never returned to the browser**.
+Injected as an `Authorization` header via `GIT_CONFIG_*`, never placed in a mirror's
+stored remote URL. Clear it any time with **Clear**.
+
+## Sign in (GitHub OAuth)
+
+To enable multi-user login, create a GitHub OAuth app (callback
+`http://localhost:25051/api/auth/callback`) and set `DEXIASK_GITHUB_CLIENT_ID` /
+`_SECRET`, `DEXIASK_SESSION_SECRET`, `DEXIASK_TOKEN_ENC_KEY` (`openssl rand -hex 32`),
+and web `AUTH_ENABLED=true` in `.env`. Users then sign in with GitHub; conversations,
+custom MCP servers, git tokens, and memory are scoped per user. Leave the client
+id/secret blank to run in **dev-fallback** mode (a single local user, no login) — the
+zero-config default.
+
+## Memory
+
+The agent records observations about you and your repos during chat. A periodic
+**dream** run (an LLM "judge") consolidates them into durable **user / repo / global**
+memory, which is injected into later answers so the assistant improves over time. Browse
+what it remembers — and trigger a consolidation manually — on the **Memory** page.
+Backed by the `memory` service on the `memory-data` volume (no database); tune with
+`DEXIASK_DREAM_MODEL` / `DEXIASK_DREAM_INTERVAL` (`0` disables the loop).
 
 ## Custom MCP servers
 
 Beyond the built-in code indexer, you can connect your own **MCP servers** so
 the agent gains their tools. Open the **MCP** page → add a server (name,
 transport `http` or `sse`, URL, and optional request headers for auth) and
-toggle it **Enabled**. Every enabled server is injected into each chat turn
-alongside the indexer. Header values (which may hold auth secrets) are stored in
-Postgres in plaintext — acceptable for this single-user local tool.
+toggle it **Enabled**. Every enabled server is injected into each of **your** chat
+turns alongside the indexer + memory. Servers are scoped per user; header values
+(which may hold auth secrets) are stored in Postgres in plaintext.
 
 ## Custom skills
 
@@ -169,15 +202,19 @@ Everything is env-driven — see `.env.example` for the full list. The essential
 | `VOYAGE_API_KEY` | Indexer embedding credential (required) |
 | `DEXIASK_MODEL` | Claude model for ask mode (default `claude-sonnet-5`) |
 | `DEXIASK_WORKSPACE_PATH` | Host codebase mounted at `/workspace` |
+| `DEXIASK_GITHUB_CLIENT_ID` / `_SECRET` | Enable GitHub login (blank = dev-fallback) |
+| `DEXIASK_SESSION_SECRET` / `_TOKEN_ENC_KEY` | Session signing + OAuth-token encryption (auth mode) |
+| `DEXIASK_ENABLE_DOMAIN_DOCS` | Generate + index LLM domain docs during indexing |
+| `DEXIASK_DREAM_MODEL` / `_DREAM_INTERVAL` | Memory consolidation model + cadence (`0` disables) |
 | `SLACK_APP_TOKEN` / `SLACK_BOT_TOKEN` | Enable the Slack bot |
 
 ## Development
 
 Each service is independently developable — see the per-service `README.md`
-(`backend/`, `engine/`, `indexer/`, `web/`).
+(`backend/`, `engine/`, `indexer/`, `memory/`, `web/`).
 
 ```bash
-make test          # run every suite: Go + engine + indexer + web
+make test          # run every suite: Go (backend + memory) + engine + indexer + web
 make test-backend  # Go unit tests
 make test-engine   # pytest (engine)
 make test-indexer  # pytest (indexer)

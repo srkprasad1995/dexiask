@@ -4,8 +4,21 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/dexiask/dexiask/internal/auth"
 	pkgerrors "github.com/dexiask/dexiask/internal/pkg/errors"
 )
+
+// requirePrincipal returns the authenticated principal the auth middleware
+// injected. When absent (should not happen behind the middleware) it writes a
+// 401 and returns ok=false.
+func requirePrincipal(w http.ResponseWriter, r *http.Request) (auth.Principal, bool) {
+	p, ok := auth.UserFromContext(r.Context())
+	if !ok || p.UserID == "" {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return auth.Principal{}, false
+	}
+	return p, true
+}
 
 // writeJSON writes v as a JSON response with the given status.
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

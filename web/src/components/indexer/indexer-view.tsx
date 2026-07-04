@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import {
+  BookOpen,
   Database,
   FileCode,
   Folder,
@@ -16,6 +17,7 @@ import { toast } from "sonner";
 
 import {
   useAddRepo,
+  useDomainDocs,
   useGitTokenStatus,
   useIndexerStatus,
   useReindex,
@@ -227,17 +229,26 @@ function RepoList() {
   );
 }
 
-/** One semantic-search result card. */
-function ResultCard({ result }: { result: SearchResult }) {
+/** One semantic-search result card. Handles both code hits and generated
+ * domain-knowledge docs (content_type "doc"). */
+export function ResultCard({ result }: { result: SearchResult }) {
+  const isDoc = result.contentType === "doc";
   return (
     <div className="overflow-hidden rounded-xl border bg-card shadow-dx-sm">
       <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2">
-        <FileCode className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        {isDoc ? (
+          <BookOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <FileCode className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        )}
         <span className="min-w-0 flex-1 truncate font-plex-mono text-xs">
           {result.repo ? `${result.repo}: ` : ""}
-          {result.path}
-          {result.startLine != null && `:${result.startLine}`}
+          {isDoc ? result.title || result.path : result.path}
+          {!isDoc && result.startLine != null && `:${result.startLine}`}
         </span>
+        <Badge variant={isDoc ? "build" : "secondary"} className="shrink-0">
+          {isDoc ? "doc" : "code"}
+        </Badge>
         {typeof result.score === "number" && (
           <span className="shrink-0 font-plex-mono text-[10px] tracking-wide text-muted-foreground">
             {result.score.toFixed(3)}
@@ -250,6 +261,67 @@ function ResultCard({ result }: { result: SearchResult }) {
         </pre>
       )}
     </div>
+  );
+}
+
+/** Browse a repo's generated domain-knowledge docs. */
+function DomainDocsPanel() {
+  const { data: reposData } = useRepos();
+  const repos = reposData?.repos ?? [];
+  const [repo, setRepo] = useState<string>("");
+  const selected = repo || repos[0]?.id || "";
+  const { data, isLoading } = useDomainDocs(selected || undefined);
+  const docs = data?.docs ?? [];
+
+  return (
+    <section className="space-y-3">
+      <h2 className="flex items-center gap-2 text-sm font-semibold">
+        <BookOpen className="h-4 w-4 text-muted-foreground" />
+        Domain docs
+      </h2>
+      <p className="text-xs text-muted-foreground">
+        High-level architecture and concept docs generated during indexing. Enable
+        with DEXIASK_ENABLE_DOMAIN_DOCS and reindex.
+      </p>
+      {repos.length > 1 && (
+        <div className="flex flex-wrap gap-1.5">
+          {repos.map((r) => (
+            <Button
+              key={r.id}
+              size="sm"
+              variant={r.id === selected ? "default" : "outline"}
+              onClick={() => setRepo(r.id)}
+            >
+              {r.id}
+            </Button>
+          ))}
+        </div>
+      )}
+      {isLoading && <Skeleton className="h-20 w-full" />}
+      {!isLoading && docs.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No domain docs for this repo yet.
+        </p>
+      )}
+      <div className="space-y-2">
+        {docs.map((d) => (
+          <details
+            key={d.slug}
+            className="overflow-hidden rounded-xl border bg-card shadow-dx-sm"
+          >
+            <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-medium">
+              <span className="min-w-0 flex-1 truncate">{d.title}</span>
+              <Badge variant="secondary" className="shrink-0">
+                {d.category}
+              </Badge>
+            </summary>
+            <div className="border-t px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
+              {d.body}
+            </div>
+          </details>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -435,6 +507,7 @@ export function IndexerView() {
         <RepoList />
         <GitTokenPanel />
         <SearchPanel />
+        <DomainDocsPanel />
       </div>
     </div>
   );

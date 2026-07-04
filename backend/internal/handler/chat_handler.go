@@ -93,8 +93,13 @@ func (h *ChatHandler) handleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	p, ok := requirePrincipal(w, r)
+	if !ok {
+		return
+	}
 	result, err := h.chatSvc.Start(r.Context(), service.ChatRequest{
 		ConversationID: req.ConversationID,
+		UserID:         p.UserID,
 		Messages:       req.Messages,
 		Attachments:    req.Attachments,
 		UploadBucket:   req.UploadBucket,

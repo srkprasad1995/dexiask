@@ -32,15 +32,26 @@ class Chunk:
     end_line: int = 1
 
 
+# Virtual-path prefix for generated domain-knowledge docs. Chosen so it can never
+# collide with a real repo file path (delete_by_path GC keys off `path`).
+DOC_PATH_PREFIX = ".dexiask-docs/"
+
+# Content-type payload values distinguishing embedded source code from generated
+# domain-knowledge docs.
+CONTENT_CODE = "code"
+CONTENT_DOC = "doc"
+
+
 def point_id(repo_id: str, path: str, ordinal: int) -> str:
     """Deterministic point id → idempotent upserts."""
     return str(uuid.uuid5(_NAMESPACE, f"{repo_id}:{path}:{ordinal}"))
 
 
 def build_payload(repo_id: str, chunk: Chunk, path: str) -> dict[str, Any]:
-    """Build the payload for a freshly-embedded chunk."""
+    """Build the payload for a freshly-embedded code chunk."""
     return {
         "repo_id": repo_id,
+        "content_type": CONTENT_CODE,
         "blob_sha": chunk.blob_sha,
         "ordinal": chunk.ordinal,
         "path": path,
@@ -54,9 +65,43 @@ def build_payload(repo_id: str, chunk: Chunk, path: str) -> dict[str, Any]:
 
 
 def build_point(repo_id: str, chunk: Chunk, vector: list[float], path: str) -> qm.PointStruct:
-    """Construct a Qdrant point for a freshly-embedded chunk."""
+    """Construct a Qdrant point for a freshly-embedded code chunk."""
     return qm.PointStruct(
         id=point_id(repo_id, path, chunk.ordinal),
         vector=vector,
         payload=build_payload(repo_id, chunk, path),
+    )
+
+
+def doc_virtual_path(slug: str) -> str:
+    """Virtual `path` for a generated domain doc (never a real repo file)."""
+    return f"{DOC_PATH_PREFIX}{slug}"
+
+
+def build_doc_payload(
+    repo_id: str, *, path: str, title: str, category: str, ordinal: int, text: str
+) -> dict[str, Any]:
+    """Build the payload for a generated domain-knowledge doc chunk."""
+    return {
+        "repo_id": repo_id,
+        "content_type": CONTENT_DOC,
+        "ordinal": ordinal,
+        "path": path,
+        "title": title,
+        "category": category,
+        "lang": "",
+        "text": text,
+    }
+
+
+def build_doc_point(
+    repo_id: str, *, path: str, title: str, category: str, ordinal: int, text: str, vector: list[float]
+) -> qm.PointStruct:
+    """Construct a Qdrant point for a generated domain-knowledge doc chunk."""
+    return qm.PointStruct(
+        id=point_id(repo_id, path, ordinal),
+        vector=vector,
+        payload=build_doc_payload(
+            repo_id, path=path, title=title, category=category, ordinal=ordinal, text=text
+        ),
     )

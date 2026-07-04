@@ -41,6 +41,7 @@ func (r *mcpServerRepository) Create(ctx context.Context, input *model.CreateMCP
 	srv := &model.MCPServer{
 		ID:          uuid.New().String(),
 		WorkspaceID: input.WorkspaceID,
+		UserID:      input.UserID,
 		Name:        input.Name,
 		Type:        input.Type,
 		URL:         input.URL,
@@ -75,7 +76,9 @@ func (r *mcpServerRepository) List(ctx context.Context, filter *model.ListMCPSer
 	if err := filter.Validate(); err != nil {
 		return nil, pkgerrors.InvalidArgument(err.Error())
 	}
-	db := r.txManager.GetDB(ctx).Where("workspace_id = ?", filter.WorkspaceID)
+	db := r.txManager.GetDB(ctx).
+		Where("workspace_id = ?", filter.WorkspaceID).
+		Where("user_id = ?", filter.UserID)
 	if filter.EnabledOnly {
 		db = db.Where("enabled = ?", true)
 	}

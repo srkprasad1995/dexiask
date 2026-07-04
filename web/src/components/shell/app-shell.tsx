@@ -3,17 +3,19 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Database, Menu, MessageCircle, Plug } from "lucide-react";
+import { Brain, Database, Menu, MessageCircle, Plug } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { DexiaskAvatar } from "@/components/brand/dexiask-avatar";
+import { UserBadge } from "@/components/shell/user-badge";
 
 const NAV = [
   { href: "/", label: "Chat", icon: MessageCircle },
   { href: "/indexer", label: "Indexer", icon: Database },
+  { href: "/memory", label: "Memory", icon: Brain },
   { href: "/mcp", label: "MCP", icon: Plug },
 ] as const;
 
@@ -107,6 +109,7 @@ export function AppShell({
           {title && <h1 className="text-sm font-medium">{title}</h1>}
           <div className="ml-auto flex items-center gap-1">
             <ThemeToggle />
+            <UserBadge />
           </div>
         </header>
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>

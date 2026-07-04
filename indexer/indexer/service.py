@@ -16,7 +16,13 @@ from typing import Any
 
 from .config import IndexerConfig, RepoConfig
 from .context import RepoNotFoundError
-from .docs import build_skeleton, save_skeleton
+from .docs import (
+    build_skeleton,
+    generate_domain_docs,
+    load_domain_docs,
+    save_domain_docs,
+    save_skeleton,
+)
 from .docs.overview import generate_overview
 from .embedding.base import EmbeddingProvider
 from .git import GitRepo
@@ -85,11 +91,33 @@ class IndexService:
     def _refresh_docs(self, repo: RepoConfig, git: GitRepo) -> None:
         if repo.primary_branch not in git.branches():
             return
+        branch = repo.primary_branch
         try:
-            skel = build_skeleton(self.settings, repo.id, git, repo.primary_branch)
+            skel = build_skeleton(self.settings, repo.id, git, branch)
             overview = generate_overview(self.settings, skel)
             if overview:
                 skel["overview"] = overview
-            save_skeleton(self.settings.data_dir, repo.id, repo.primary_branch, skel)
+            save_skeleton(self.settings.data_dir, repo.id, branch, skel)
+            self._refresh_domain_docs(repo, git, skel, branch)
         except Exception as e:  # docs are best-effort; never fail an index over them
             log.warning("doc refresh for %s failed: %s", repo.id, e)
+
+    def _refresh_domain_docs(self, repo, git, skeleton, branch) -> None:
+        """Generate + embed domain-knowledge docs, but only when enabled and the
+        branch tip changed since the last run (LLM generation is expensive)."""
+        if not self.settings.enable_domain_docs:
+            return
+        tip = git.resolve(branch)
+        cached = load_domain_docs(self.settings.data_dir, repo.id, branch)
+        unchanged = cached and tip == self.state.get_commit(repo.id)
+        if unchanged:
+            return
+        docs = generate_domain_docs(self.settings, skeleton)
+        save_domain_docs(
+            self.settings.data_dir,
+            repo.id,
+            branch,
+            [{"title": d.title, "category": d.category, "slug": d.slug, "body": d.body} for d in docs],
+        )
+        if self.pipeline is not None:
+            self.pipeline.embed_docs(repo, docs)

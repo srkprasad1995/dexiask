@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     overview_model: str = "claude-opus-4-8"
 
+    # --- Domain-knowledge docs (generated + embedded, content_type="doc") ---
+    enable_domain_docs: bool = False
+    domain_docs_model: str = "claude-opus-4-8"
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 COMPOSE := docker compose
 
-.PHONY: help up down build logs ps restart test test-backend test-engine test-indexer test-web lint fmt clean
+.PHONY: help up down build logs ps restart test test-backend test-memory test-engine test-indexer test-web lint fmt clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -27,10 +27,13 @@ ps: ## Show service status
 restart: down up ## Restart the stack
 
 # ---- Tests (run each suite in its own toolchain) --------------------------
-test: test-backend test-engine test-indexer test-web ## Run every test suite
+test: test-backend test-memory test-engine test-indexer test-web ## Run every test suite
 
 test-backend: ## Go unit tests
 	cd backend && go test ./...
+
+test-memory: ## Memory service (Go) unit tests
+	cd memory && go test ./...
 
 test-engine: ## Python engine tests
 	cd engine && python -m pytest -q
@@ -43,12 +46,14 @@ test-web: ## Web (vitest) tests
 
 lint: ## Lint everything
 	cd backend && go vet ./...
+	cd memory && go vet ./...
 	cd engine && ruff check .
 	cd indexer && ruff check .
 	cd web && pnpm lint
 
 fmt: ## Format Go + Python
 	cd backend && gofmt -w .
+	cd memory && gofmt -w .
 	cd engine && ruff format .
 	cd indexer && ruff format .
 

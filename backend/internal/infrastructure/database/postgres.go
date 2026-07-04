@@ -53,6 +53,8 @@ func MigrateDB(db *gorm.DB, log *logger.Logger) error {
 	log.Info("running database migrations")
 
 	if err := db.AutoMigrate(
+		&model.User{},
+		&model.Session{},
 		&model.Conversation{},
 		&model.Message{},
 		&model.Attachment{},

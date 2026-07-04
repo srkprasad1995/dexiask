@@ -13,6 +13,11 @@ def _path(data_dir: str, repo_id: str, branch: str) -> Path:
     return docs_cache_path(data_dir, repo_id) / f"{safe_branch}.json"
 
 
+def _domain_path(data_dir: str, repo_id: str, branch: str) -> Path:
+    safe_branch = branch.replace("/", "_")
+    return docs_cache_path(data_dir, repo_id) / f"{safe_branch}.domain.json"
+
+
 def save_skeleton(data_dir: str, repo_id: str, branch: str, skeleton: dict[str, Any]) -> None:
     p = _path(data_dir, repo_id, branch)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -23,4 +28,19 @@ def load_skeleton(data_dir: str, repo_id: str, branch: str) -> dict[str, Any] | 
     p = _path(data_dir, repo_id, branch)
     if not p.exists():
         return None
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def save_domain_docs(
+    data_dir: str, repo_id: str, branch: str, docs: list[dict[str, Any]]
+) -> None:
+    p = _domain_path(data_dir, repo_id, branch)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(docs), encoding="utf-8")
+
+
+def load_domain_docs(data_dir: str, repo_id: str, branch: str) -> list[dict[str, Any]]:
+    p = _domain_path(data_dir, repo_id, branch)
+    if not p.exists():
+        return []
     return json.loads(p.read_text(encoding="utf-8"))

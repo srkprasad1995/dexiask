@@ -1,8 +1,10 @@
 // Package config loads Dexiask backend configuration from the environment.
 //
-// Dexiask is a single-user, single-workspace service: there is
-// no auth, no per-workspace scoping. A fixed identity is used everywhere the
-// upstream code threads a resolved (workspace, user) pair.
+// Dexiask is a single-workspace service (one mounted codebase == one workspace),
+// so WorkspaceID stays fixed. Users, however, are real: they sign in with GitHub
+// and every product row is stamped with the resolved GitHub user id. When no
+// OAuth app is configured the backend runs in dev-fallback mode and stamps the
+// fixed dev user id so the zero-config `docker compose up` experience is kept.
 package config
 
 import (
@@ -10,9 +12,9 @@ import (
 	"strconv"
 )
 
-// Fixed identity for the single-user build. Every product row is stamped with
-// these so the data model is unchanged from upstream, but nothing is derived
-// from a client-supplied header.
+// FixedWorkspaceID is the single workspace every row is scoped to (one mounted
+// codebase). FixedUserID is the dev-fallback user id used only when auth is not
+// configured (RequireAuth == false).
 const (
 	FixedWorkspaceID = "dexiask"
 	FixedUserID      = "dexiask"
@@ -29,6 +31,12 @@ type Config struct {
 	// IndexerMCPURL is the engine-reachable indexer MCP endpoint. Injected into
 	// every ask Job so the agent can call semantic_search. Inert when empty.
 	IndexerMCPURL string
+	// MemoryURL is the REST base URL of the memory service (proxy + digest target).
+	// Inert when empty (memory disabled).
+	MemoryURL string
+	// MemoryMCPURL is the engine-reachable memory MCP endpoint. Injected per turn
+	// with per-user headers so the agent can view/record memory. Inert when empty.
+	MemoryMCPURL string
 	// Model is the Claude model the ask agent runs on.
 	Model string
 	// MaxTokens optionally caps output tokens per turn (0 = engine default).
@@ -43,6 +51,26 @@ type Config struct {
 	// LogLevel / Env control logging.
 	LogLevel string
 	Env      string
+
+	// --- GitHub OAuth / auth (Phase 1) ---
+	// GitHubClientID / GitHubClientSecret configure the GitHub OAuth app. When
+	// either is empty the backend runs in dev-fallback mode (RequireAuth false).
+	GitHubClientID     string
+	GitHubClientSecret string
+	// OAuthCallbackURL is the backend callback the GitHub app redirects to
+	// (e.g. http://localhost:25052/v1/auth/callback).
+	OAuthCallbackURL string
+	// SessionSecret signs session cookies (HMAC). Required in auth mode.
+	SessionSecret string
+	// TokenEncKey is the AES key (hex, 32/48/64 chars) encrypting stored OAuth
+	// tokens at rest. Required in auth mode.
+	TokenEncKey string
+	// WebBaseURL is the web app origin the callback redirects the browser back
+	// to after login (e.g. http://localhost:25051).
+	WebBaseURL string
+	// RequireAuth is true when a GitHub OAuth app is configured. When false the
+	// backend injects the fixed dev-fallback principal on every request.
+	RequireAuth bool
 }
 
 // Load reads configuration from the environment.
@@ -59,11 +87,16 @@ func Load() *Config {
 			port = n
 		}
 	}
+	githubClientID := os.Getenv("DEXIASK_GITHUB_CLIENT_ID")
+	githubClientSecret := os.Getenv("DEXIASK_GITHUB_CLIENT_SECRET")
+
 	return &Config{
 		DBDSN:          os.Getenv("DEXIASK_DB_DSN"),
 		AgentURL:       os.Getenv("DEXIASK_AGENT_URL"),
 		IndexerURL:     os.Getenv("DEXIASK_INDEXER_URL"),
 		IndexerMCPURL:  os.Getenv("DEXIASK_INDEXER_MCP_URL"),
+		MemoryURL:      os.Getenv("DEXIASK_MEMORY_URL"),
+		MemoryMCPURL:   os.Getenv("DEXIASK_MEMORY_MCP_URL"),
 		Model:          getEnv("DEXIASK_MODEL", "claude-sonnet-5"),
 		MaxTokens:      maxTokens,
 		WorkspaceMount: getEnv("DEXIASK_WORKSPACE_MOUNT", "/workspace"),
@@ -72,6 +105,16 @@ func Load() *Config {
 		Port:           port,
 		LogLevel:       getEnv("DEXIASK_LOG_LEVEL", "info"),
 		Env:            getEnv("DEXIASK_ENV", "development"),
+
+		GitHubClientID:     githubClientID,
+		GitHubClientSecret: githubClientSecret,
+		OAuthCallbackURL:   os.Getenv("DEXIASK_OAUTH_CALLBACK_URL"),
+		SessionSecret:      os.Getenv("DEXIASK_SESSION_SECRET"),
+		TokenEncKey:        os.Getenv("DEXIASK_TOKEN_ENC_KEY"),
+		WebBaseURL:         getEnv("DEXIASK_WEB_BASE_URL", "http://localhost:25051"),
+		// Auth is enforced only when a GitHub OAuth app is configured; otherwise
+		// the backend runs in dev-fallback mode (single dev user, no login).
+		RequireAuth: githubClientID != "" && githubClientSecret != "",
 	}
 }
 

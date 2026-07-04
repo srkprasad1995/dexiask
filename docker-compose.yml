@@ -1,7 +1,7 @@
 # Dexiask — full stack. `cp .env.example .env`, fill secrets, then:
 #   docker compose up --build
 #
-# Services: web · backend · engine · indexer · qdrant · postgres.
+# Services: web · backend · engine · indexer · memory · qdrant · postgres.
 # One shared `workspace` bind-mount (the codebase the agent reads & the indexer
 # indexes) is mounted read-only into engine and indexer.
 name: dexiask
@@ -66,6 +66,11 @@ services:
       DEXIASK_QDRANT_URL: ${DEXIASK_QDRANT_URL:-http://qdrant:6333}
       DEXIASK_EMBEDDING_MODEL: ${DEXIASK_EMBEDDING_MODEL:-voyage-code-3}
       DEXIASK_EMBEDDING_DIM: ${DEXIASK_EMBEDDING_DIM:-1024}
+      # Generated domain-knowledge docs (LLM), embedded as content_type=doc and
+      # searchable alongside code. Off by default; needs an Anthropic key.
+      DEXIASK_ENABLE_DOMAIN_DOCS: ${DEXIASK_ENABLE_DOMAIN_DOCS:-false}
+      DEXIASK_DOMAIN_DOCS_MODEL: ${DEXIASK_DOMAIN_DOCS_MODEL:-claude-opus-4-8}
+      DEXIASK_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
     ports:
       - "${DEXIASK_INDEXER_PORT:-25054}:8080"
@@ -81,6 +86,24 @@ services:
       timeout: 5s
       retries: 10
 
+  memory:
+    build:
+      context: ./memory
+    environment:
+      DEXIASK_MEMORY_ROOT: /memory
+      DEXIASK_MEMORY_MCP_SELF_URL: ${DEXIASK_MEMORY_MCP_SELF_URL:-http://memory:8080/mcp}
+      DEXIASK_AGENT_URL: ${DEXIASK_AGENT_URL:-http://engine:8080}
+      DEXIASK_DREAM_MODEL: ${DEXIASK_DREAM_MODEL:-${DEXIASK_MODEL:-claude-sonnet-5}}
+      DEXIASK_DREAM_INTERVAL: ${DEXIASK_DREAM_INTERVAL:-1h}
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+    volumes:
+      - memory-data:/memory
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
@@ -89,11 +112,21 @@ services:
       DEXIASK_AGENT_URL: ${DEXIASK_AGENT_URL:-http://engine:8080}
       DEXIASK_INDEXER_URL: ${DEXIASK_INDEXER_URL:-http://indexer:8080}
       DEXIASK_INDEXER_MCP_URL: ${DEXIASK_INDEXER_MCP_URL:-http://indexer:8080/mcp}
+      DEXIASK_MEMORY_URL: ${DEXIASK_MEMORY_URL:-http://memory:8080}
+      DEXIASK_MEMORY_MCP_URL: ${DEXIASK_MEMORY_MCP_URL:-http://memory:8080/mcp}
       DEXIASK_MODEL: ${DEXIASK_MODEL:-claude-sonnet-5}
       DEXIASK_MAX_TOKENS: ${DEXIASK_MAX_TOKENS:-}
       DEXIASK_WORKSPACE_MOUNT: /workspace
       SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      # GitHub OAuth (optional). When client id/secret are set, login is enforced;
+      # otherwise the backend runs in dev-fallback mode (single local user).
+      DEXIASK_GITHUB_CLIENT_ID: ${DEXIASK_GITHUB_CLIENT_ID:-}
+      DEXIASK_GITHUB_CLIENT_SECRET: ${DEXIASK_GITHUB_CLIENT_SECRET:-}
+      DEXIASK_OAUTH_CALLBACK_URL: ${DEXIASK_OAUTH_CALLBACK_URL:-http://localhost:25051/api/auth/callback}
+      DEXIASK_SESSION_SECRET: ${DEXIASK_SESSION_SECRET:-}
+      DEXIASK_TOKEN_ENC_KEY: ${DEXIASK_TOKEN_ENC_KEY:-}
+      DEXIASK_WEB_BASE_URL: ${DEXIASK_WEB_BASE_URL:-http://localhost:25051}
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
     ports:
       - "${DEXIASK_BACKEND_PORT:-25052}:8080"
@@ -103,6 +136,8 @@ services:
       postgres:
         condition: service_healthy
       engine:
+        condition: service_started
+      memory:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
@@ -115,6 +150,9 @@ services:
       context: ./web
     environment:
       GO_BACKEND_URL: http://backend:8080
+      # Mirror the backend's auth mode so the web login gate matches. Set to
+      # "true" when a GitHub OAuth app is configured.
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}
     ports:
       - "${DEXIASK_WEB_PORT:-25051}:3000"
     depends_on:
@@ -125,3 +163,4 @@ volumes:
   postgres-data:
   qdrant-data:
   indexer-data:
+  memory-data:

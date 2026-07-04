@@ -183,6 +183,67 @@ def test_git_token_mutation_visible_to_service(sample_repo, tmp_path):
     assert service.settings.git_token == "tok-123"
 
 
+def test_domain_docs_endpoint(client, tmp_path):
+    from indexer.docs import save_domain_docs
+
+    # Unknown repo → 404.
+    assert client.get("/v1/docs/nope").status_code == 404
+
+    # Empty until generated.
+    assert client.get("/v1/docs/r").json() == {"docs": []}
+
+    # After a save, the endpoint serves them for the web Docs tab.
+    save_domain_docs(
+        str(tmp_path / "data"), "r", "main",
+        [{"title": "Arch", "category": "architecture", "slug": "arch", "body": "b"}],
+    )
+    docs = client.get("/v1/docs/r").json()["docs"]
+    assert docs[0]["title"] == "Arch"
+
+
+def test_index_uses_x_git_token_header_fallback(sample_repo, tmp_path):
+    """When no body token is given, reindex/index use the X-Git-Token header."""
+    from fastapi.testclient import TestClient
+
+    from indexer.app import create_app
+    from indexer.lock import InMemoryLock
+    from indexer.pipeline import InMemoryStateStore
+    from indexer.service import IndexService
+    from indexer.store import QdrantStore
+
+    settings = Settings(workspace_root=str(tmp_path), data_dir=str(tmp_path / "data"))
+    registry = IndexerConfig(
+        repos=[RepoConfig(id="r", path=str(sample_repo), primary_branch="main")]
+    )
+    store = QdrantStore(location=":memory:")
+    ctx = IndexerContext(settings, registry, store=store, embedder=FakeProvider(dim=16))
+    service = IndexService(
+        settings, registry, store=store, embedder=FakeProvider(dim=16),
+        state=InMemoryStateStore(), lock=InMemoryLock(),
+    )
+
+    captured: list[str | None] = []
+
+    def spy(repo_id, **kw):
+        captured.append(kw.get("token"))
+        return {"repo": repo_id, "status": "indexed", "embedded": 0}
+
+    service.index_repo = spy  # type: ignore[method-assign]
+    c = TestClient(create_app(ctx, service))
+
+    # Header used when body has no token.
+    c.post("/v1/index/r", headers={"X-Git-Token": "hdr-tok"})
+    assert captured[-1] == "hdr-tok"
+
+    # An explicit body token still wins over the header.
+    c.post("/v1/index/r", json={"token": "body-tok"}, headers={"X-Git-Token": "hdr-tok"})
+    assert captured[-1] == "body-tok"
+
+    # No token anywhere → None.
+    c.post("/reindex", json={"repo": "r"})
+    assert captured[-1] is None
+
+
 def test_git_token_persisted_across_rebuild(tmp_path):
     """A freshly build_components-built app loads the persisted token."""
     from indexer.app import build_components

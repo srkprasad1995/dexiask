@@ -14,6 +14,7 @@ func main() {
 		InfrastructureModule,
 		AgentModule,
 		RepositoryModule,
+		AuthModule,
 		ServiceModule,
 		HandlerModule,
 		SlackModule,

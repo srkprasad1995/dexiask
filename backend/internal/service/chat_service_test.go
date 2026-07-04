@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -80,7 +81,7 @@ func newChatFixture(t *testing.T, events []agent.Event) *chatFixture {
 	rm := agent.NewRunManager(logger.NewNop())
 
 	svc := service.NewChatService(reg, rm, fakeTx{}, convRepo, msgRepo, mcpRepo, service.WindowAssembler{}, attSvc,
-		logger.NewNop(), "claude-test", 4096, "http://indexer:8080/mcp")
+		nil, logger.NewNop(), "claude-test", 4096, "http://indexer:8080/mcp", "")
 
 	return &chatFixture{svc: svc, rt: rt, convRepo: convRepo, msgRepo: msgRepo, mcpRepo: mcpRepo, attSvc: attSvc}
 }
@@ -193,7 +194,7 @@ func TestChatService_InjectsEnabledCustomMCPServers(t *testing.T) {
 	reg.Register(rt)
 	rm := agent.NewRunManager(logger.NewNop())
 	svc := service.NewChatService(reg, rm, fakeTx{}, convRepo, msgRepo, mcpRepo, service.WindowAssembler{}, attSvc,
-		logger.NewNop(), "claude-test", 4096, "http://indexer:8080/mcp")
+		nil, logger.NewNop(), "claude-test", 4096, "http://indexer:8080/mcp", "")
 
 	// The service must ask for enabled servers only; return a single enabled one.
 	var gotFilter *model.ListMCPServersFilter
@@ -206,7 +207,12 @@ func TestChatService_InjectsEnabledCustomMCPServers(t *testing.T) {
 			}}, nil
 		})
 
-	convRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(&model.Conversation{ID: "conv-1"}, nil)
+	var gotCreate *model.CreateConversationInput
+	convRepo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, in *model.CreateConversationInput) (*model.Conversation, error) {
+			gotCreate = in
+			return &model.Conversation{ID: "conv-1", UserID: in.UserID}, nil
+		})
 	appendReturnsIDs(msgRepo)
 	convRepo.EXPECT().Touch(gomock.Any(), "conv-1").Return(nil)
 	msgRepo.EXPECT().ListByConversation(gomock.Any(), "conv-1").Return(
@@ -216,6 +222,7 @@ func TestChatService_InjectsEnabledCustomMCPServers(t *testing.T) {
 	convRepo.EXPECT().UpdateSessionID(gomock.Any(), "conv-1", "s").Return(nil)
 
 	res, err := svc.Start(context.Background(), service.ChatRequest{
+		UserID:   "42",
 		Messages: []agent.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
@@ -225,6 +232,13 @@ func TestChatService_InjectsEnabledCustomMCPServers(t *testing.T) {
 
 	if gotFilter == nil || !gotFilter.EnabledOnly {
 		t.Fatalf("expected EnabledOnly filter, got %+v", gotFilter)
+	}
+	// Both the conversation and the MCP lookup must be scoped to the caller.
+	if gotFilter.UserID != "42" {
+		t.Fatalf("mcp filter user = %q, want 42", gotFilter.UserID)
+	}
+	if gotCreate == nil || gotCreate.UserID != "42" {
+		t.Fatalf("conversation created with user %v, want 42", gotCreate)
 	}
 	job := rt.job()
 	if len(job.MCPServers) != 2 {
@@ -323,5 +337,78 @@ func TestChatService_RejectsEmptyTurn(t *testing.T) {
 		Messages: []agent.Message{{Role: "user", Content: "   "}},
 	}); err == nil {
 		t.Fatal("expected error for empty turn")
+	}
+}
+
+// fakeDigester records the user it was asked about and returns a canned digest.
+type fakeDigester struct {
+	seenUser string
+	digest   string
+}
+
+func (f *fakeDigester) Digest(_ context.Context, userID string) string {
+	f.seenUser = userID
+	return f.digest
+}
+
+// TestChatService_InjectsMemory verifies the per-user memory MCP server is
+// attached (with the caller's headers) and the memory digest is appended to the
+// system prompt.
+func TestChatService_InjectsMemory(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	convRepo := mocks.NewMockConversationRepository(ctrl)
+	msgRepo := mocks.NewMockMessageRepository(ctrl)
+	mcpRepo := mocks.NewMockMCPServerRepository(ctrl)
+	attSvc := svcmocks.NewMockAttachmentService(ctrl)
+
+	rt := &fakeRuntime{events: []agent.Event{{Type: "result", Status: "ok", SessionID: "s"}}}
+	reg := agent.NewRegistry()
+	reg.Register(rt)
+	rm := agent.NewRunManager(logger.NewNop())
+
+	digester := &fakeDigester{digest: "\n\n## Memory\n\n### user / 42\n- prefers terse answers"}
+	svc := service.NewChatService(reg, rm, fakeTx{}, convRepo, msgRepo, mcpRepo, service.WindowAssembler{}, attSvc,
+		digester, logger.NewNop(), "claude-test", 4096, "http://indexer:8080/mcp", "http://memory:8080/mcp")
+
+	mcpRepo.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, nil)
+	convRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(&model.Conversation{ID: "conv-1", UserID: "42"}, nil)
+	appendReturnsIDs(msgRepo)
+	convRepo.EXPECT().Touch(gomock.Any(), "conv-1").Return(nil)
+	msgRepo.EXPECT().ListByConversation(gomock.Any(), "conv-1").Return(
+		[]*model.Message{{ID: "u1", Role: model.MessageRoleUser, Content: "hi", Status: model.MessageStatusComplete}}, nil)
+	attSvc.EXPECT().ListByConversation(gomock.Any(), "conv-1").Return(nil, nil)
+	msgRepo.EXPECT().UpdateMessage(gomock.Any(), gomock.Any()).Return(nil)
+	convRepo.EXPECT().UpdateSessionID(gomock.Any(), "conv-1", "s").Return(nil)
+
+	res, err := svc.Start(context.Background(), service.ChatRequest{
+		UserID:   "42",
+		Messages: []agent.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	collect(res.Run)
+
+	job := rt.job()
+	// The memory server sits after the indexer server, with per-user headers.
+	var mem *agent.MCPServerConfig
+	for i := range job.MCPServers {
+		if job.MCPServers[i].Name == "memory" {
+			mem = &job.MCPServers[i]
+		}
+	}
+	if mem == nil {
+		t.Fatalf("memory MCP server not injected: %+v", job.MCPServers)
+	}
+	if mem.Headers["X-User-Id"] != "42" || mem.Headers["X-Role"] != "ask" ||
+		mem.Headers["X-Writable-Scopes"] != "user,repo" {
+		t.Fatalf("memory headers wrong: %+v", mem.Headers)
+	}
+	// The digest is fetched for the caller and appended to the system prompt.
+	if digester.seenUser != "42" {
+		t.Fatalf("digest fetched for %q, want 42", digester.seenUser)
+	}
+	if !strings.Contains(job.SystemPrompt, "## Memory") {
+		t.Fatalf("system prompt missing memory digest: %q", job.SystemPrompt)
 	}
 }

@@ -14,10 +14,18 @@ from functools import lru_cache
 
 from ..chunking import chunk_blob, detect_language
 from ..config import RepoConfig
+from ..docs import DomainDoc
 from ..embedding.base import EmbeddingProvider
 from ..git import GitRepo
 from ..settings import Settings
-from ..store import Chunk, QdrantStore, build_point
+from ..store import (
+    CONTENT_DOC,
+    Chunk,
+    QdrantStore,
+    build_doc_point,
+    build_point,
+    doc_virtual_path,
+)
 from .state import StateStore
 
 
@@ -77,6 +85,38 @@ class Pipeline:
         # Clear any stale chunks for this path (e.g. an edit that shrank the file)
         # before writing the fresh set.
         self.store.delete_by_path(repo.collection, path)
+        self.store.upsert(repo.collection, points)
+        return len(points)
+
+    # ------------------------------------------------------------ domain docs
+    def embed_docs(self, repo: RepoConfig, docs: list[DomainDoc]) -> int:
+        """Embed generated domain-knowledge docs into the repo collection as
+        ``content_type="doc"`` points. Fully replaces the prior doc set (docs are
+        regenerated wholesale), so this also GCs docs that disappeared."""
+        self.store.ensure_collection(repo.collection, self.embedder.dim)
+        # Full replace: drop the previous doc points before writing the new set.
+        self.store.delete_by_content_type(repo.collection, CONTENT_DOC)
+        if not docs:
+            return 0
+
+        points = []
+        for doc in docs:
+            path = doc_virtual_path(doc.slug)
+            raw = chunk_blob(doc.body.encode("utf-8"), f"{doc.slug}.md")
+            texts = [c.text for c in raw] or [doc.body]
+            vectors = self.embedder.embed_documents(texts)
+            for i, (text, vec) in enumerate(zip(texts, vectors, strict=True)):
+                points.append(
+                    build_doc_point(
+                        repo.id,
+                        path=path,
+                        title=doc.title,
+                        category=doc.category,
+                        ordinal=i,
+                        text=text,
+                        vector=vec,
+                    )
+                )
         self.store.upsert(repo.collection, points)
         return len(points)
 

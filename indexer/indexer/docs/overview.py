@@ -11,6 +11,8 @@ import json
 from typing import Any
 
 from ..settings import Settings
+from .digest import skeleton_digest
+from .prompts import load_prompt
 
 
 def generate_overview(settings: Settings, skeleton: dict[str, Any]) -> str | None:
@@ -21,15 +23,7 @@ def generate_overview(settings: Settings, skeleton: dict[str, Any]) -> str | Non
     except Exception:
         return None
 
-    digest = {
-        "dirs": skeleton.get("dirs"),
-        "entrypoints": skeleton.get("entrypoints"),
-        "readme": skeleton.get("readme"),
-        "top_symbols": [
-            {"name": s["name"], "path": s["path"], "kind": s["kind"]}
-            for s in skeleton.get("top_symbols", [])
-        ],
-    }
+    digest = skeleton_digest(skeleton)
     client = Anthropic(api_key=settings.anthropic_api_key)
     msg = client.messages.create(
         model=settings.overview_model,
@@ -37,12 +31,7 @@ def generate_overview(settings: Settings, skeleton: dict[str, Any]) -> str | Non
         messages=[
             {
                 "role": "user",
-                "content": (
-                    "Write a concise architecture overview (5-8 sentences) of this codebase "
-                    "for an engineer who has never seen it. Cover what it does, the main "
-                    "components, and where to start reading. Structure digest:\n\n"
-                    + json.dumps(digest, indent=2)
-                ),
+                "content": load_prompt("overview").replace("{digest}", json.dumps(digest, indent=2)),
             }
         ],
     )

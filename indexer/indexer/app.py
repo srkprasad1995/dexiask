@@ -21,7 +21,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .config.models import IndexerConfig, RepoConfig
@@ -175,15 +175,26 @@ def create_app(
                 return JSONResponse({"error": f"unknown repo {rid!r}"}, status_code=404)
         return JSONResponse({"results": results})
 
+    def _effective_token(request: Request, body: dict[str, Any]) -> str | None:
+        # An explicit body token wins; otherwise fall back to the per-user
+        # X-Git-Token header the backend injects (the caller's GitHub OAuth token).
+        return body.get("token") or request.headers.get("X-Git-Token") or None
+
     @app.post("/reindex")
-    async def reindex(body: dict[str, Any] | None = None) -> JSONResponse:
+    async def reindex(request: Request, body: dict[str, Any] | None = None) -> JSONResponse:
         body = body or {}
-        return await _run_index(body.get("repo"), full=bool(body.get("full")), token=body.get("token"))
+        return await _run_index(
+            body.get("repo"), full=bool(body.get("full")), token=_effective_token(request, body)
+        )
 
     @app.post("/v1/index/{repo_id}")
-    async def index_one(repo_id: str, body: dict[str, Any] | None = None) -> JSONResponse:
+    async def index_one(
+        repo_id: str, request: Request, body: dict[str, Any] | None = None
+    ) -> JSONResponse:
         body = body or {}
-        return await _run_index(repo_id, full=bool(body.get("full")), token=body.get("token"))
+        return await _run_index(
+            repo_id, full=bool(body.get("full")), token=_effective_token(request, body)
+        )
 
     @app.get("/v1/git-token")
     async def get_git_token() -> dict[str, bool]:
@@ -233,6 +244,19 @@ def create_app(
             return repos
 
         return {"repos": await asyncio.to_thread(_collect)}
+
+    @app.get("/v1/docs/{repo_id}")
+    async def get_domain_docs(repo_id: str) -> JSONResponse:
+        # Generated domain-knowledge docs for the web indexer "Docs" tab.
+        from .docs import load_domain_docs
+
+        repo = ctx.registry.get(repo_id)
+        if repo is None:
+            return JSONResponse({"error": f"unknown repo {repo_id!r}"}, status_code=404)
+        docs = await asyncio.to_thread(
+            load_domain_docs, settings.data_dir, repo.id, repo.primary_branch
+        )
+        return JSONResponse({"docs": docs})
 
     @app.post("/v1/search")
     async def search(body: dict[str, Any] | None = None) -> JSONResponse:

@@ -22,7 +22,9 @@ export async function proxy(
   if (method !== "GET" && method !== "DELETE") {
     init.body = await req.text();
   }
-  const res = await fetch(`${env.goBackendUrl}${path}`, init);
+  // Forward the incoming query string so upstream filters (?scope=&id=…) work.
+  const { search } = new URL(req.url);
+  const res = await fetch(`${env.goBackendUrl}${path}${search}`, init);
   if (res.status === 204) return new NextResponse(null, { status: 204 });
   const data = await res.json().catch(() => ({}));
   return NextResponse.json(data, { status: res.status });

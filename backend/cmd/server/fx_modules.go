@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -10,9 +13,11 @@ import (
 
 	"github.com/dexiask/dexiask/internal/agent"
 	"github.com/dexiask/dexiask/internal/agent/adapters"
+	"github.com/dexiask/dexiask/internal/auth"
 	"github.com/dexiask/dexiask/internal/config"
 	"github.com/dexiask/dexiask/internal/handler"
 	"github.com/dexiask/dexiask/internal/infrastructure/database"
+	"github.com/dexiask/dexiask/internal/memory"
 	"github.com/dexiask/dexiask/internal/pkg/logger"
 	"github.com/dexiask/dexiask/internal/pkg/transaction"
 	"github.com/dexiask/dexiask/internal/repository"
@@ -70,6 +75,45 @@ var RepositoryModule = fx.Options(
 	fx.Provide(repository.NewAttachmentRepository),
 	fx.Provide(repository.NewSlackThreadRepository),
 	fx.Provide(repository.NewMCPServerRepository),
+	fx.Provide(repository.NewUserRepository),
+	fx.Provide(repository.NewSessionRepository),
+)
+
+// AuthModule provides GitHub OAuth, sessions, and the request-auth middleware.
+// In dev-fallback mode (RequireAuth false) the OAuth/cipher/signer providers
+// return nil — they are only exercised in auth mode.
+var AuthModule = fx.Options(
+	fx.Provide(func(cfg *config.Config) (*auth.TokenCipher, error) {
+		if !cfg.RequireAuth {
+			return nil, nil
+		}
+		if cfg.TokenEncKey == "" {
+			return nil, fmt.Errorf("DEXIASK_TOKEN_ENC_KEY is required when auth is enabled")
+		}
+		return auth.NewTokenCipher(cfg.TokenEncKey)
+	}),
+	fx.Provide(func(cfg *config.Config) (*auth.CookieSigner, error) {
+		if !cfg.RequireAuth {
+			return nil, nil
+		}
+		if cfg.SessionSecret == "" {
+			return nil, fmt.Errorf("DEXIASK_SESSION_SECRET is required when auth is enabled")
+		}
+		return auth.NewCookieSigner(cfg.SessionSecret, strings.HasPrefix(cfg.OAuthCallbackURL, "https://")), nil
+	}),
+	fx.Provide(func(cfg *config.Config) *auth.OAuth {
+		if !cfg.RequireAuth {
+			return nil
+		}
+		return auth.NewOAuth(cfg.GitHubClientID, cfg.GitHubClientSecret, cfg.OAuthCallbackURL)
+	}),
+	fx.Provide(func() *auth.GitHubClient { return auth.NewGitHubClient(5 * time.Minute) }),
+	fx.Provide(func(o *auth.OAuth, gh *auth.GitHubClient, c *auth.TokenCipher, ur repository.UserRepository, sr repository.SessionRepository, log *logger.Logger) service.AuthService {
+		return service.NewAuthService(o, gh, c, ur, sr, log)
+	}),
+	fx.Provide(func(cfg *config.Config, s *auth.CookieSigner, c *auth.TokenCipher, sr repository.SessionRepository, ur repository.UserRepository, log *logger.Logger) *auth.Authenticator {
+		return auth.NewAuthenticator(cfg.RequireAuth, config.FixedUserID, s, c, sr, ur, log)
+	}),
 )
 
 // ServiceModule provides the business-logic layer.
@@ -78,6 +122,7 @@ var ServiceModule = fx.Options(
 	fx.Provide(func(cfg *config.Config, repo repository.AttachmentRepository, log *logger.Logger) service.AttachmentService {
 		return service.NewAttachmentService(cfg.WorkspaceMount, repo, log)
 	}),
+	fx.Provide(func(cfg *config.Config) *memory.Client { return memory.NewClient(cfg.MemoryURL) }),
 	fx.Provide(service.NewConversationService),
 	fx.Provide(func(
 		reg *agent.Registry,
@@ -88,10 +133,11 @@ var ServiceModule = fx.Options(
 		mcp repository.MCPServerRepository,
 		as service.ContextAssembler,
 		att service.AttachmentService,
+		mem *memory.Client,
 		log *logger.Logger,
 		cfg *config.Config,
 	) service.ChatService {
-		return service.NewChatService(reg, rm, tx, cr, mr, mcp, as, att, log, cfg.Model, cfg.MaxTokens, cfg.IndexerMCPURL)
+		return service.NewChatService(reg, rm, tx, cr, mr, mcp, as, att, mem, log, cfg.Model, cfg.MaxTokens, cfg.IndexerMCPURL, cfg.MemoryMCPURL)
 	}),
 )
 
@@ -100,12 +146,19 @@ var HandlerModule = fx.Options(
 	fx.Provide(handler.NewChatHandler),
 	fx.Provide(handler.NewConversationHandler),
 	fx.Provide(handler.NewAttachmentHandler),
-	fx.Provide(func(cfg *config.Config, log *logger.Logger) *handler.IndexerHandler {
-		return handler.NewIndexerHandler(cfg.IndexerURL, log)
+	fx.Provide(func(cfg *config.Config, gh *auth.GitHubClient, log *logger.Logger) *handler.IndexerHandler {
+		return handler.NewIndexerHandler(cfg.IndexerURL, gh, log)
+	}),
+	fx.Provide(func(cfg *config.Config, log *logger.Logger) *handler.MemoryHandler {
+		return handler.NewMemoryHandler(cfg.MemoryURL, log)
 	}),
 	fx.Provide(handler.NewMCPServerHandler),
-	fx.Provide(func(c *handler.ChatHandler, cv *handler.ConversationHandler, a *handler.AttachmentHandler, i *handler.IndexerHandler, m *handler.MCPServerHandler) server.Handlers {
-		return server.Handlers{Chat: c, Conversation: cv, Attachment: a, Indexer: i, MCPServer: m}
+	fx.Provide(func(cfg *config.Config, svc service.AuthService, signer *auth.CookieSigner, log *logger.Logger) *handler.AuthHandler {
+		secure := strings.HasPrefix(cfg.OAuthCallbackURL, "https://")
+		return handler.NewAuthHandler(svc, signer, cfg.WebBaseURL, cfg.RequireAuth, secure, config.FixedUserID, log)
+	}),
+	fx.Provide(func(c *handler.ChatHandler, cv *handler.ConversationHandler, a *handler.AttachmentHandler, i *handler.IndexerHandler, mem *handler.MemoryHandler, m *handler.MCPServerHandler, au *handler.AuthHandler) server.Handlers {
+		return server.Handlers{Chat: c, Conversation: cv, Attachment: a, Indexer: i, Memory: mem, MCPServer: m, Auth: au}
 	}),
 )
 

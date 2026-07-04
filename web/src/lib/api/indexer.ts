@@ -63,7 +63,11 @@ export interface ReindexInput {
 
 export interface SearchResult {
   repo?: string;
+  /** "code" (default) or "doc" for a generated domain-knowledge doc. */
+  contentType?: string;
   path: string;
+  /** Title of the domain doc (set when contentType === "doc"). */
+  title?: string;
   score?: number;
   /** The matching code snippet / chunk text. */
   content?: string;
@@ -76,6 +80,18 @@ export interface SearchResponse {
   results: SearchResult[];
 }
 
+/** A generated domain-knowledge doc for the "Docs" tab. */
+export interface DomainDoc {
+  title: string;
+  category: string;
+  slug: string;
+  body: string;
+}
+
+export interface DomainDocsResponse {
+  docs: DomainDoc[];
+}
+
 // ---------------------------------------------------------------------------
 // Query keys
 // ---------------------------------------------------------------------------
@@ -84,6 +100,7 @@ export const indexerKeys = {
   repos: () => ["indexer", "repos"] as const,
   status: () => ["indexer", "status"] as const,
   gitToken: () => ["indexer", "git-token"] as const,
+  domainDocs: (repo: string) => ["indexer", "docs", repo] as const,
 };
 
 /** Whether a git access token is configured server-side (value never leaves the indexer). */
@@ -145,6 +162,20 @@ export function useSearch() {
   return useMutation({
     mutationFn: (vars: { query: string; repo?: string; limit?: number }) =>
       apiSend<SearchResponse>("/api/indexer/v1/search", "POST", vars),
+  });
+}
+
+/** Generated domain-knowledge docs for a repo (empty until enabled + indexed). */
+export function useDomainDocs(repo: string | undefined) {
+  return useQuery({
+    queryKey: indexerKeys.domainDocs(repo ?? ""),
+    queryFn: () =>
+      apiGet<DomainDocsResponse>(
+        `/api/indexer/v1/docs/${encodeURIComponent(repo ?? "")}`,
+      ),
+    enabled: !!repo,
+    staleTime: 30_000,
+    retry: false,
   });
 }
 

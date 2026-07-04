@@ -1,6 +1,26 @@
 """Qdrant collection + payload schema and the store client."""
 
 from .qdrant import QdrantStore, SearchHit
-from .schema import Chunk, build_point, point_id
+from .schema import (
+    CONTENT_CODE,
+    CONTENT_DOC,
+    DOC_PATH_PREFIX,
+    Chunk,
+    build_doc_point,
+    build_point,
+    doc_virtual_path,
+    point_id,
+)
 
-__all__ = ["Chunk", "QdrantStore", "SearchHit", "build_point", "point_id"]
+__all__ = [
+    "CONTENT_CODE",
+    "CONTENT_DOC",
+    "DOC_PATH_PREFIX",
+    "Chunk",
+    "QdrantStore",
+    "SearchHit",
+    "build_doc_point",
+    "build_point",
+    "doc_virtual_path",
+    "point_id",
+]

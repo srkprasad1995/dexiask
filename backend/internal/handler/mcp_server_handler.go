@@ -68,8 +68,13 @@ func (h *MCPServerHandler) ServeItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MCPServerHandler) list(w http.ResponseWriter, r *http.Request) {
+	p, ok := requirePrincipal(w, r)
+	if !ok {
+		return
+	}
 	servers, err := h.repo.List(r.Context(), &model.ListMCPServersFilter{
 		WorkspaceID: config.FixedWorkspaceID,
+		UserID:      p.UserID,
 	})
 	if err != nil {
 		h.logger.Error("list mcp servers failed", zap.Error(err))
@@ -83,6 +88,10 @@ func (h *MCPServerHandler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MCPServerHandler) create(w http.ResponseWriter, r *http.Request) {
+	p, ok := requirePrincipal(w, r)
+	if !ok {
+		return
+	}
 	var body mcpServerBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -90,6 +99,7 @@ func (h *MCPServerHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	input := &model.CreateMCPServerInput{
 		WorkspaceID: config.FixedWorkspaceID,
+		UserID:      p.UserID,
 		Enabled:     true,
 	}
 	if body.Name != nil {
@@ -116,7 +126,30 @@ func (h *MCPServerHandler) create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, srv)
 }
 
+// ownsServer verifies the principal owns the server before mutating it, so one
+// user cannot read/modify another user's server (its Headers may hold secrets).
+func (h *MCPServerHandler) ownsServer(w http.ResponseWriter, r *http.Request, id string) bool {
+	p, ok := requirePrincipal(w, r)
+	if !ok {
+		return false
+	}
+	srv, err := h.repo.GetByID(r.Context(), id)
+	if err != nil {
+		writeServiceError(w, err)
+		return false
+	}
+	if srv.UserID != p.UserID {
+		// Do not leak existence of another user's server.
+		writeError(w, http.StatusNotFound, "mcp server not found")
+		return false
+	}
+	return true
+}
+
 func (h *MCPServerHandler) update(w http.ResponseWriter, r *http.Request, id string) {
+	if !h.ownsServer(w, r, id) {
+		return
+	}
 	var body mcpServerBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -149,6 +182,9 @@ func (h *MCPServerHandler) update(w http.ResponseWriter, r *http.Request, id str
 }
 
 func (h *MCPServerHandler) delete(w http.ResponseWriter, r *http.Request, id string) {
+	if !h.ownsServer(w, r, id) {
+		return
+	}
 	if err := h.repo.Delete(r.Context(), id); err != nil {
 		h.logger.Error("delete mcp server failed", zap.Error(err), zap.String("id", id))
 		writeServiceError(w, err)
