@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dexiask-indexer"
+version = "0.1.0"
+description = "Dexiask code indexer — semantic + lexical code search exposed as an MCP server"
+requires-python = ">=3.12"
+dependencies = [
+    # HTTP server + MCP over streamable HTTP.
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "mcp>=1.0",
+    # Typed config and models.
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "pyyaml>=6.0",
+    # Vector store.
+    "qdrant-client>=1.9",
+    # Embedding provider (hosted, code-specialized).
+    "voyageai>=0.2",
+    # Observability — OpenTelemetry over OTLP/HTTP.
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp-proto-http>=1.27",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "ruff>=0.5",
+]
+# Optional one-shot LLM overview generation (docs). Off by default.
+overview = [
+    "anthropic>=0.40",
+]
+# Optional tree-sitter symbol-boundary chunking. Without it the chunker falls
+# back to deterministic line-window chunking, so this is purely an upgrade.
+chunking = [
+    "tree-sitter>=0.21",
+    "tree-sitter-language-pack>=0.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["indexer*"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = [
+    "E501",   # line length (handled by formatter)
+    "UP042",  # str+Enum (intentional: wire-serialized string enums)
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+asyncio_mode = "auto"

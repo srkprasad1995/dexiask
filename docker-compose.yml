@@ -1,0 +1,127 @@
+# Dexiask — full stack. `cp .env.example .env`, fill secrets, then:
+#   docker compose up --build
+#
+# Services: web · backend · engine · indexer · qdrant · postgres.
+# One shared `workspace` bind-mount (the codebase the agent reads & the indexer
+# indexes) is mounted read-only into engine and indexer.
+name: dexiask
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dexiask}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dexiask}
+      POSTGRES_DB: ${POSTGRES_DB:-dexiask}
+    ports:
+      - "${DEXIASK_POSTGRES_PORT:-25056}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dexiask}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    ports:
+      - "${DEXIASK_QDRANT_PORT:-25055}:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  engine:
+    build:
+      context: ./engine
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
+      # Optional: point the Claude SDK at an Anthropic-compatible gateway
+      # (e.g. OpenRouter → https://openrouter.ai/api). Blank = api.anthropic.com.
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      CLAUDE_ENGINE_MODEL: ${DEXIASK_MODEL:-claude-sonnet-5}
+      # No OTel collector ships with the stack; disable the exporter to keep logs
+      # clean. Set to "false" and add a collector to enable tracing.
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+    ports:
+      - "${DEXIASK_ENGINE_PORT:-25053}:8080"
+    volumes:
+      - ${DEXIASK_WORKSPACE_PATH:-./sample-workspace}:/workspace
+      - ./skills:/skills:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/healthz').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  indexer:
+    build:
+      context: ./indexer
+    environment:
+      DEXIASK_VOYAGE_API_KEY: ${VOYAGE_API_KEY:?set VOYAGE_API_KEY in .env}
+      DEXIASK_QDRANT_URL: ${DEXIASK_QDRANT_URL:-http://qdrant:6333}
+      DEXIASK_EMBEDDING_MODEL: ${DEXIASK_EMBEDDING_MODEL:-voyage-code-3}
+      DEXIASK_EMBEDDING_DIM: ${DEXIASK_EMBEDDING_DIM:-1024}
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+    ports:
+      - "${DEXIASK_INDEXER_PORT:-25054}:8080"
+    volumes:
+      - ${DEXIASK_WORKSPACE_PATH:-./sample-workspace}:/workspace:ro
+      - indexer-data:/var/lib/dexiask-indexer
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/healthz').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DEXIASK_DB_DSN: ${DEXIASK_DB_DSN:-postgres://dexiask:dexiask@postgres:5432/dexiask?sslmode=disable}
+      DEXIASK_AGENT_URL: ${DEXIASK_AGENT_URL:-http://engine:8080}
+      DEXIASK_INDEXER_URL: ${DEXIASK_INDEXER_URL:-http://indexer:8080}
+      DEXIASK_INDEXER_MCP_URL: ${DEXIASK_INDEXER_MCP_URL:-http://indexer:8080/mcp}
+      DEXIASK_MODEL: ${DEXIASK_MODEL:-claude-sonnet-5}
+      DEXIASK_MAX_TOKENS: ${DEXIASK_MAX_TOKENS:-}
+      DEXIASK_WORKSPACE_MOUNT: /workspace
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+    ports:
+      - "${DEXIASK_BACKEND_PORT:-25052}:8080"
+    volumes:
+      - ${DEXIASK_WORKSPACE_PATH:-./sample-workspace}:/workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      engine:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: ./web
+    environment:
+      GO_BACKEND_URL: http://backend:8080
+    ports:
+      - "${DEXIASK_WEB_PORT:-25051}:3000"
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  qdrant-data:
+  indexer-data:

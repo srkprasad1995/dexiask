@@ -1,0 +1,21 @@
+# Repo registry. A "repo" is a folder under workspace_root (a monorepo is one
+# repo, optionally scoped with `subpath`) or a git URL. Only each repo's
+# `primary_branch` is indexed (default-branch only).
+
+default_embedding:
+  provider: voyage
+  model: voyage-code-3
+  dim: 1024
+
+# No repos are seeded by default — register them at runtime via POST /v1/repos
+# (or the web UI). Add entries here only if you want a repo indexed automatically
+# on startup for every deployment.
+repos: []
+  # A repo is sourced from EITHER `path` (a local checkout under workspace_root)
+  # OR `url` (a git remote cloned directly). Private HTTPS remotes authenticate
+  # with DEXIASK_GIT_TOKEN (or a per-request token on /reindex).
+  #
+  # Example — index a public git repo by URL:
+  #   - id: flask
+  #     url: https://github.com/pallets/flask.git
+  #     primary_branch: main

@@ -1,0 +1,1162 @@
+@import "tailwindcss";
+/* Explicitly scan the app source for utility classes. Tailwind v4's automatic
+   content detection does not reliably pick up `src/` in the Next.js production
+   build (utilities get purged, leaving an unstyled page), so we name it. */
+@source "../../src";
+/* Direct filesystem path: tw-animate-css only declares a `style` export
+   condition (and blocks unlisted subpaths), which the Turbopack CSS resolver
+   doesn't pick up. The relative node_modules path resolves reliably, matching
+   the `@source "../../node_modules/..."` convention below. */
+@import "../../node_modules/tw-animate-css/dist/tw-animate.css";
+
+/* Streamdown plugin packages — let Tailwind scan their utility classes. */
+@source "../../node_modules/streamdown/dist/*.js";
+@source "../../node_modules/@streamdown/code/dist/*.js";
+@source "../../node_modules/@streamdown/mermaid/dist/*.js";
+@source "../../node_modules/@streamdown/math/dist/*.js";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  /* v2 "Precision Instrument": IBM Plex is the universal typeface. Sans = the
+     product UI / headings, Mono = data & micro-labels. Geist remains available
+     as a user-selectable option (see font-provider.tsx). */
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
+  --font-heading: var(--font-plex-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Project-Mode "drafting table" fonts — ink/data/document. */
+  --font-plex-sans: var(--font-plex-sans);
+  --font-plex-mono: var(--font-plex-mono);
+  --font-plex-serif: var(--font-plex-serif);
+
+  /* Drafting-table color tokens exposed as Tailwind colors (bg-dx-cyan, …). */
+  --color-dx-table: var(--dx-table);
+  --color-dx-plate: var(--dx-plate);
+  --color-dx-plate-2: var(--dx-plate-2);
+  --color-dx-rule: var(--dx-rule);
+  --color-dx-rule-soft: var(--dx-rule-soft);
+  --color-dx-cyan: var(--dx-cyan);
+  --color-dx-cyan-ink: var(--dx-cyan-ink);
+  --color-dx-paper: var(--dx-paper);
+  --color-dx-paper-edge: var(--dx-paper-edge);
+  --color-dx-ink: var(--dx-ink);
+  --color-dx-ink-soft: var(--dx-ink-soft);
+  --color-dx-confirm: var(--dx-confirm);
+  --color-dx-confirm-bg: var(--dx-confirm-bg);
+  --color-dx-confirm-bd: var(--dx-confirm-bd);
+  --color-dx-gen: var(--dx-gen);
+  --color-dx-ask: var(--dx-ask);
+  --color-dx-ask-bg: var(--dx-ask-bg);
+  --color-dx-ask-bd: var(--dx-ask-bd);
+  --color-dx-revise: var(--dx-revise);
+  --color-dx-revise-bg: var(--dx-revise-bg);
+  --color-dx-revise-bd: var(--dx-revise-bd);
+  --color-dx-faint: var(--dx-faint);
+
+  /* Brand orange — primary action + identity (bg-dx-brand, text-dx-brand-ink). */
+  --color-dx-brand: var(--dx-brand);
+  --color-dx-brand-deep: var(--dx-brand-deep);
+  --color-dx-brand-tint: var(--dx-brand-tint);
+  --color-dx-brand-ink: var(--dx-brand-ink);
+
+  /* Lifecycle phase family — the v2 signature system (bg-dx-discovery, …). */
+  --color-dx-discovery: var(--dx-discovery);
+  --color-dx-discovery-bg: var(--dx-discovery-bg);
+  --color-dx-discovery-bd: var(--dx-discovery-bd);
+  --color-dx-definition: var(--dx-definition);
+  --color-dx-definition-bg: var(--dx-definition-bg);
+  --color-dx-definition-bd: var(--dx-definition-bd);
+  --color-dx-build: var(--dx-build);
+  --color-dx-build-bg: var(--dx-build-bg);
+  --color-dx-build-bd: var(--dx-build-bd);
+  --color-dx-done: var(--dx-done);
+  --color-dx-done-bg: var(--dx-done-bg);
+  --color-dx-done-bd: var(--dx-done-bd);
+
+  --shadow-dx-sm: var(--dx-shadow-sm);
+  --shadow-dx-md: var(--dx-shadow-md);
+}
+
+:root {
+  /* Chat message column width — overridden at runtime by the appearance
+     setting (FontProvider sets --message-max-width from the user preference).
+     Defaults to "Wide" to match the FontProvider default. */
+  --message-max-width: 1120px;
+  /* ── v2 "Precision Instrument" — LIGHT ──────────────────────────────────
+     Warm greige "drafting table". Three distinct surface tiers:
+       canvas (--background, darkest) < chrome (--sidebar / plate) < raised
+       card (--card / surface, lightest). The warm orange brand is rationed for
+       primary action; the four lifecycle phases carry distinct identities. */
+  --background: #eceae6; /* table — the canvas/desk (darkest tier) */
+  --foreground: #2a2a2c; /* ink */
+  --card: #fcfbf8; /* surface — raised card (lightest tier) */
+  --card-foreground: #2a2a2c;
+  --popover: #fcfbf8;
+  --popover-foreground: #2a2a2c;
+  --primary: #d85a30; /* brand orange — primary action */
+  --primary-foreground: #ffffff;
+  --secondary: #e6e3dd; /* plate-2 — recessed (segmented, board cols) */
+  --secondary-foreground: #2a2a2c;
+  --muted: #e6e3dd; /* plate-2 */
+  --muted-foreground: #5b5a58; /* ink-soft */
+  --accent: #e8e5df; /* hover tint */
+  --accent-foreground: #2a2a2c;
+  --destructive: #c0524a;
+  --border: #dcd8d1; /* rule */
+  --input: #dcd8d1;
+  --ring: #918d85; /* faint warm focus ring */
+  /* Elevation shadows (light) — soft and low. */
+  --dx-shadow-sm: 0 1px 2px -1px #2633420f, 0 1px 3px #2633420a;
+  --dx-shadow-md: 0 2px 4px -2px #26334214, 0 8px 24px -10px #2633421f;
+  /* Charts ride the warm neutral ramp. */
+  --chart-1: #918d85;
+  --chart-2: #7a766e;
+  --chart-3: #5b5a58;
+  --chart-4: #43423e;
+  --chart-5: #2a2a2c;
+  --radius: 0.625rem;
+  --sidebar: #f4f2ee; /* plate — chrome tier (between canvas and card) */
+  --sidebar-foreground: #2a2a2c;
+  --sidebar-primary: #d85a30;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8e5df;
+  --sidebar-accent-foreground: #2a2a2c;
+  --sidebar-border: #dcd8d1;
+  --sidebar-ring: #918d85;
+
+  /* ── Brand orange — identity + primary action ── */
+  --dx-brand: #d85a30;
+  --dx-brand-deep: #b8431f;
+  --dx-brand-tint: #fbe7de;
+  --dx-brand-ink: #7a2d14;
+
+  /* ── Drafting-table surfaces — LIGHT (warm greige) ── */
+  --dx-table: #eceae6;
+  --dx-plate: #f4f2ee;
+  --dx-plate-2: #e6e3dd;
+  --dx-rule: #dcd8d1;
+  --dx-rule-soft: #e8e5df;
+  --dx-faint: #918d85;
+  --dx-cyan: #0e7c8b;
+  --dx-cyan-ink: #ffffff;
+  --dx-paper: #f8f2e4;
+  --dx-paper-edge: #ece3cf;
+  --dx-ink: #26333c;
+  --dx-ink-soft: #6a7681;
+
+  /* ── Lifecycle phase family — the v2 signature (fg / bg / border) ── */
+  --dx-discovery: #0e7c8b;
+  --dx-discovery-bg: #dceef1;
+  --dx-discovery-bd: #a6d4db;
+  --dx-definition: #2c66bc;
+  --dx-definition-bg: #e2ebfa;
+  --dx-definition-bd: #b3cbed;
+  --dx-build: #a9731a;
+  --dx-build-bg: #f6ead2;
+  --dx-build-bd: #e0c58e;
+  --dx-done: #2e7d52;
+  --dx-done-bg: #dcefe4;
+  --dx-done-bd: #a8d4bd;
+
+  /* ── Semantic status (aliased to the phase hues for back-compat) ── */
+  --dx-confirm: #2e7d52;
+  --dx-confirm-bg: #e5f3eb;
+  --dx-confirm-bd: #aad6bd;
+  --dx-gen: #0e7c8b;
+  --dx-ask: #2c66bc;
+  --dx-ask-bg: #e6eefa;
+  --dx-ask-bd: #b8cdec;
+  --dx-revise: #a9731a;
+  --dx-revise-bg: #f6ead2;
+  --dx-revise-bd: #e0c58e;
+}
+
+.dark {
+  /* ── v2 "Precision Instrument" — DARK (deeper, 3-tier) ── */
+  --background: #0a121b; /* table — the deep slate canvas (darkest) */
+  --foreground: #dde6ee; /* ink */
+  --card: #1d2a38; /* surface — raised card (lightest tier) */
+  --card-foreground: #dde6ee;
+  --popover: #1d2a38;
+  --popover-foreground: #dde6ee;
+  --primary: #ef7a4f; /* brand orange (lifted for dark) */
+  --primary-foreground: #1a0c06;
+  --secondary: #1a2836; /* plate-2 */
+  --secondary-foreground: #dde6ee;
+  --muted: #1a2836;
+  --muted-foreground: #93a4b3; /* ink-soft */
+  --accent: #21303f;
+  --accent-foreground: #dde6ee;
+  --destructive: #ef8b80;
+  --border: #26384a; /* rule */
+  --input: #26384a;
+  --ring: #566879; /* faint */
+  /* Elevation shadows (dark) — deeper so raised surfaces separate. */
+  --dx-shadow-sm: 0 1px 2px #00000066, 0 1px 3px #00000040;
+  --dx-shadow-md: 0 4px 10px -2px #00000073, 0 10px 24px -8px #00000080;
+  --chart-1: #566879;
+  --chart-2: #6f8294;
+  --chart-3: #8a9caa;
+  --chart-4: #a7b6c1;
+  --chart-5: #dde6ee;
+  --sidebar: #121e2a; /* plate — chrome tier (between canvas and card) */
+  --sidebar-foreground: #dde6ee;
+  --sidebar-primary: #ef7a4f;
+  --sidebar-primary-foreground: #1a0c06;
+  --sidebar-accent: #21303f;
+  --sidebar-accent-foreground: #dde6ee;
+  --sidebar-border: #26384a;
+  --sidebar-ring: #566879;
+
+  /* ── Brand orange — DARK ── */
+  --dx-brand: #ef7a4f;
+  --dx-brand-deep: #d85a30;
+  --dx-brand-tint: #2e1810;
+  --dx-brand-ink: #f6b394;
+
+  /* ── Drafting-table surfaces — DARK ── */
+  --dx-table: #0a121b;
+  --dx-plate: #121e2a;
+  --dx-plate-2: #1a2836;
+  --dx-rule: #26384a;
+  --dx-rule-soft: #1c2b3a;
+  --dx-faint: #566879;
+  --dx-cyan: #5bc8d6;
+  --dx-cyan-ink: #06222a;
+  --dx-paper: #f3ecdd; /* sheet stays warm parchment in dark mode */
+  --dx-paper-edge: #e6ddc8;
+  --dx-ink: #23323c;
+  --dx-ink-soft: #62707a;
+
+  /* ── Lifecycle phase family — DARK ── */
+  --dx-discovery: #5bc8d6;
+  --dx-discovery-bg: #11303a;
+  --dx-discovery-bd: #2c5560;
+  --dx-definition: #7fb0ee;
+  --dx-definition-bg: #15243a;
+  --dx-definition-bd: #2f4d75;
+  --dx-build: #e6a93c;
+  --dx-build-bg: #2a2010;
+  --dx-build-bd: #5b4422;
+  --dx-done: #74c29a;
+  --dx-done-bg: #14271e;
+  --dx-done-bd: #2f5a44;
+
+  /* ── Semantic status — DARK (aliased to phase hues) ── */
+  --dx-confirm: #74c29a;
+  --dx-confirm-bg: #16271f;
+  --dx-confirm-bd: #34604a;
+  --dx-gen: #5bc8d6;
+  --dx-ask: #7fb0ee;
+  --dx-ask-bg: #15243a;
+  --dx-ask-bd: #314f78;
+  --dx-revise: #e6a93c;
+  --dx-revise-bg: #271e10;
+  --dx-revise-bd: #5b4422;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/*
+ * Shiki dual-theme binding for class-based dark mode (next-themes uses the
+ * `.dark` class, not prefers-color-scheme). Streamdown emits both the light
+ * color and a `--shiki-dark` custom property per token; under `.dark` we swap
+ * to the dark values. This makes theme toggling a pure CSS swap — no
+ * re-highlighting.
+ */
+.dark .shiki,
+.dark .shiki span {
+  color: var(--shiki-dark, inherit) !important;
+  background-color: var(--shiki-dark-bg, inherit) !important;
+  font-style: var(--shiki-dark-font-style, inherit) !important;
+  font-weight: var(--shiki-dark-font-weight, inherit) !important;
+  text-decoration: var(--shiki-dark-text-decoration, inherit) !important;
+}
+
+/*
+ * Markdown typography — scoped via data-streamdown attribute selectors.
+ * Sizes are intentionally subtle (close to base text-sm) for chat context.
+ */
+
+/* Tighten Streamdown's default space-y-4 block spacing */
+.space-y-4[class*="whitespace-normal"] > * + * {
+  margin-top: 0.5rem;
+}
+.space-y-4[class*="whitespace-normal"] p {
+  margin-bottom: 0;
+}
+.space-y-4[class*="whitespace-normal"] h1,
+.space-y-4[class*="whitespace-normal"] h2,
+.space-y-4[class*="whitespace-normal"] h3,
+.space-y-4[class*="whitespace-normal"] h4,
+.space-y-4[class*="whitespace-normal"] h5,
+.space-y-4[class*="whitespace-normal"] h6 {
+  margin-top: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Scroll-paint isolation for heavy rich blocks (diagrams, code). Without this,
+ * scrolling a long, diagram-heavy reply repaints the large Mermaid SVGs every
+ * frame — visible flicker that scales with rendered area (so it "works" zoomed
+ * out). `contain: content` (layout + paint + style) lets the browser cache and
+ * skip these subtrees while scrolling, without skipping their initial render
+ * (so no content-visibility "pop"). */
+[data-streamdown="code-block"],
+[data-streamdown="mermaid"] {
+  contain: content;
+}
+
+[data-streamdown="heading-1"] {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+[data-streamdown="heading-2"] {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+[data-streamdown="heading-3"] {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+[data-streamdown="heading-4"],
+[data-streamdown="heading-5"],
+[data-streamdown="heading-6"] {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+[data-streamdown="ordered-list"] {
+  list-style-type: decimal;
+  padding-left: 1.25em;
+}
+[data-streamdown="unordered-list"] {
+  list-style-type: disc;
+  padding-left: 1.25em;
+}
+[data-streamdown="list-item"] {
+  margin-top: 0.1em;
+  margin-bottom: 0.1em;
+}
+
+[data-streamdown="blockquote"] {
+  border-left: 3px solid var(--border);
+  padding-left: 0.75em;
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+[data-streamdown="inline-code"] {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--muted);
+  padding: 0.15em 0.35em;
+  border-radius: 0.25rem;
+}
+
+[data-streamdown="horizontal-rule"] {
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+[data-streamdown="link"] {
+  /* Documents read with cyan ink, not the orange brand (reserved for action). */
+  color: var(--dx-discovery);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+[data-streamdown="link"]:hover {
+  opacity: 0.8;
+}
+
+[data-streamdown="strong"] {
+  font-weight: 600;
+}
+
+/* ───────────────────────────────────────────────────────────────────────
+ * Project-Mode "drafting table" design language (plan 05).
+ * Translated from 00-design-language.html into app-native utilities that
+ * ride the existing CSS-var theme (light = :root, dark = .dark).
+ * ─────────────────────────────────────────────────────────────────────── */
+
+.font-plex-sans {
+  font-family: var(--font-plex-sans), "IBM Plex Sans", system-ui, sans-serif;
+}
+.font-plex-mono {
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+}
+.font-plex-serif {
+  font-family: var(--font-plex-serif), "IBM Plex Serif", Georgia, serif;
+}
+
+/* Faint engineering grid behind the project workspace. */
+.dx-grid-bg {
+  background-image:
+    linear-gradient(var(--dx-rule-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--dx-rule-soft) 1px, transparent 1px);
+  background-size: 56px 56px;
+  opacity: 0.4;
+}
+
+/* The warm-paper artifact sheet (right zone). */
+.dx-sheet {
+  background: var(--dx-paper);
+  color: var(--dx-ink);
+  border-radius: 3px;
+  position: relative;
+  padding: 1.6rem 1.4rem 1.8rem 2.6rem;
+  box-shadow:
+    0 16px 38px -16px #0009,
+    0 2px 0 var(--dx-paper-edge),
+    0 0 0 1px #0000001f;
+}
+.dx-sheet::before {
+  content: "";
+  position: absolute;
+  left: 1.5rem;
+  top: 0.9rem;
+  bottom: 0.9rem;
+  width: 1px;
+  background: #cf9d92aa;
+}
+/* Markdown inside the paper sheet reads as a document (serif). */
+.dx-sheet .prose,
+.dx-sheet [data-streamdown],
+.dx-sheet .ProseMirror {
+  color: var(--dx-ink);
+  /* The sheet is always light parchment, so pin Tailwind's prose color vars to
+     dark ink — otherwise dark-mode `prose-invert` washes out the editor (and
+     preview) text to near-invisible light grey on the paper. */
+  --tw-prose-body: var(--dx-ink);
+  --tw-prose-headings: var(--dx-ink);
+  --tw-prose-bold: var(--dx-ink);
+  --tw-prose-code: var(--dx-ink);
+  --tw-prose-quotes: var(--dx-ink);
+}
+/* Tiptap's editable surface uses bg-background (themed dark); on the sheet it
+   must be the parchment, not a dark rectangle. */
+.dx-sheet .ProseMirror {
+  background: transparent;
+}
+
+/* GFM tables follow the active theme on the parchment sheet, like code blocks:
+   Streamdown already paints the table chrome with themed utilities (`bg-sidebar`
+   wrapper, `bg-muted` header, `border-border` rules) — light greige in light
+   mode, dark slate in dark mode. Reset the base color from the sheet's pinned
+   ink back to the themed foreground so the cell text stays legible against the
+   (dark-in-dark-mode) fills. The nested `[data-streamdown]` selector is needed
+   because the cells carry their own `data-streamdown` attrs, which the sheet's
+   ink rule targets directly. */
+.dx-sheet [data-streamdown="table-wrapper"],
+.dx-sheet [data-streamdown="table-wrapper"] [data-streamdown] {
+  color: var(--foreground);
+}
+/* Column separators: Streamdown ships only horizontal row dividers, so wide
+   tables read as floating columns. Add a themed vertical rule between columns
+   (matching the row dividers' `--border`) so the table reads as a clean grid in
+   both themes, and lift the header a touch with weight + tracking. */
+.dx-sheet [data-streamdown="table-wrapper"] th:not(:last-child),
+.dx-sheet [data-streamdown="table-wrapper"] td:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+.dx-sheet [data-streamdown="table-wrapper"] th {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Inline code on the parchment sheet — the base rule fills it with the dark
+   `var(--muted)`; pin it to a faint ink-wash pill with dark ink text instead. */
+.dx-sheet [data-streamdown="inline-code"] {
+  background: color-mix(in srgb, var(--dx-ink) 8%, transparent);
+  color: var(--dx-ink);
+}
+
+/* Code blocks follow the active theme on the parchment sheet: a crisp
+   github-light card in light mode, and a github-dark card in dark mode (the
+   Shiki dark-swap above keeps its syntax colors legible). Like tables, and
+   unlike prose / inline code — which stay pinned to ink so they read on the
+   always-parchment sheet — a code block is a self-contained surface, so it
+   carries its own theme. Reset its base color from the sheet's pinned ink to the
+   themed
+   foreground so the header language label and toolbar stay legible against the
+   (dark-in-dark-mode) card; Shiki still colors the code itself. The nested
+   `[data-streamdown]` selector is needed because the header/body carry their
+   own `data-streamdown` attrs, which the sheet's ink rule targets directly. */
+.dx-sheet [data-streamdown="code-block"],
+.dx-sheet [data-streamdown="code-block"] [data-streamdown] {
+  color: var(--foreground);
+}
+
+/* Drag-to-resize handle between zones. */
+.dx-resizer {
+  flex: 0 0 9px;
+  cursor: col-resize;
+  position: relative;
+  align-self: stretch;
+}
+.dx-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  background: var(--dx-rule);
+  transition:
+    width 0.12s,
+    background 0.12s;
+}
+.dx-resizer:hover::before,
+.dx-resizer[data-dragging="true"]::before {
+  width: 3px;
+  background: var(--dx-cyan);
+}
+body.dx-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* ───────────────────────────────────────────────────────────────────────
+ * Lifecycle Rail (imported "Lifecycle Rail.html"). The project workspace's
+ * left rail rendered as a vertical drafting "ruler": rotated phase dimension
+ * labels, a continuous spine with status nodes (done = green check disc,
+ * active = terracotta target, pending = hollow ring), and a 68px compact mode.
+ * All scoped under `.lc-rail` so the generic class names don't leak.
+ * ─────────────────────────────────────────────────────────────────────── */
+.lc-rail {
+  --lc-gutter-w: 26px;
+  --lc-spine-fill: color-mix(in oklch, var(--foreground) 34%, transparent);
+  --lc-spine-faint: var(--border);
+  --lc-accent: var(--dx-brand);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px 10px;
+  gap: 2px;
+  font-family: var(--font-plex-sans), "IBM Plex Sans", system-ui, sans-serif;
+}
+
+/* Brand */
+.lc-rail .lc-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px 8px;
+  min-height: 40px;
+}
+.lc-rail .lc-word {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+/* Back link */
+.lc-rail .lc-back {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  margin-bottom: 2px;
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  text-decoration: none;
+  font-size: 13.5px;
+  white-space: nowrap;
+  transition: background 0.14s, color 0.14s;
+}
+.lc-rail .lc-back:hover {
+  background: color-mix(in oklch, var(--muted) 70%, transparent);
+  color: var(--foreground);
+}
+.lc-rail .lc-back svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Footer affordance — pinned to the bottom of the rail (e.g. View memory).
+   Mirrors the back link, with a hairline top separator. */
+.lc-rail .lc-foot {
+  position: relative;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px;
+  border-top: 1px solid var(--dx-rule-soft);
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  text-decoration: none;
+  font-size: 13.5px;
+  white-space: nowrap;
+  transition: background 0.14s, color 0.14s;
+}
+.lc-rail .lc-foot:hover {
+  background: color-mix(in oklch, var(--muted) 70%, transparent);
+  color: var(--foreground);
+}
+.lc-rail .lc-foot.selected {
+  background: color-mix(in oklch, var(--lc-accent) 11%, transparent);
+  color: var(--foreground);
+}
+.lc-rail .lc-foot.selected:hover {
+  background: color-mix(in oklch, var(--lc-accent) 15%, transparent);
+}
+.lc-rail .lc-foot.selected::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 10px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--lc-accent);
+}
+.lc-rail .lc-foot svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Project card / compact chip */
+.lc-rail .lc-pcard {
+  margin: 8px 2px;
+  padding: 2px 10px;
+}
+.lc-rail .lc-pname {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lc-rail .lc-pkey {
+  font-family: var(--font-plex-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  margin-top: 2px;
+}
+.lc-rail .lc-pchip {
+  display: none;
+  margin: 6px auto 8px;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+.lc-rail .lc-pchip .lc-sq {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--dx-shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-plex-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* Ruler scroll area */
+.lc-rail .lc-ruler {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 4px 0;
+  margin: 0 -4px;
+  display: flex;
+  flex-direction: column;
+}
+.lc-rail .lc-ruler::-webkit-scrollbar {
+  width: 6px;
+}
+.lc-rail .lc-ruler::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+/* phase = rotated dimension label + its stage rows */
+.lc-rail .lc-phase {
+  display: flex;
+  align-items: stretch;
+}
+.lc-rail .lc-bracket {
+  width: 22px;
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+.lc-rail .lc-bracket::before,
+.lc-rail .lc-bracket::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  width: 5px;
+  height: 1px;
+  background: color-mix(in oklch, var(--muted-foreground) 30%, transparent);
+}
+.lc-rail .lc-bracket::before {
+  top: 12px;
+}
+.lc-rail .lc-bracket::after {
+  bottom: 12px;
+}
+.lc-rail .lc-pl {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-family: var(--font-plex-mono);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--muted-foreground) 82%, transparent);
+  white-space: nowrap;
+  line-height: 1;
+}
+.lc-rail .lc-rows {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Row */
+.lc-rail .lc-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 0;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+.lc-rail .lc-row:hover {
+  background: color-mix(in oklch, var(--muted) 60%, transparent);
+}
+.lc-rail .lc-row.selected {
+  background: color-mix(in oklch, var(--lc-accent) 11%, transparent);
+}
+.lc-rail .lc-row.selected:hover {
+  background: color-mix(in oklch, var(--lc-accent) 15%, transparent);
+}
+.lc-rail .lc-row.selected::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 8px;
+  bottom: 8px;
+  width: 2.5px;
+  border-radius: 999px;
+  background: var(--lc-accent);
+}
+
+/* gutter = spine + node */
+.lc-rail .lc-gutter {
+  position: relative;
+  width: var(--lc-gutter-w);
+  flex-shrink: 0;
+  align-self: stretch;
+}
+.lc-rail .lc-gutter::before,
+.lc-rail .lc-gutter::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  background: var(--lc-spine-faint);
+}
+.lc-rail .lc-gutter::before {
+  top: 0;
+  height: 50%;
+}
+.lc-rail .lc-gutter::after {
+  top: 50%;
+  bottom: 0;
+}
+.lc-rail .lc-row.done .lc-gutter::before,
+.lc-rail .lc-row.active .lc-gutter::before {
+  background: var(--lc-spine-fill);
+}
+.lc-rail .lc-row.done .lc-gutter::after {
+  background: var(--lc-spine-fill);
+}
+.lc-rail .lc-phase:first-child .lc-rows .lc-row:first-child .lc-gutter::before {
+  content: none;
+}
+.lc-rail .lc-phase:last-child .lc-rows .lc-row:last-child .lc-gutter::after {
+  content: none;
+}
+
+.lc-rail .lc-node {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+.lc-rail .lc-row.pending .lc-node {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+  background: var(--sidebar);
+}
+.lc-rail .lc-row.active .lc-node {
+  width: 13px;
+  height: 13px;
+  background: var(--sidebar);
+  border: 2px solid var(--lc-accent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--lc-accent) 16%, transparent);
+}
+.lc-rail .lc-row.active .lc-node::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--lc-accent);
+}
+.lc-rail .lc-row.done .lc-node {
+  width: 16px;
+  height: 16px;
+  background: var(--dx-confirm);
+  color: #fff;
+}
+.lc-rail .lc-row.done .lc-node svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* icon */
+.lc-rail .lc-ico {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin: 0 11px 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+}
+.lc-rail .lc-ico svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.9;
+}
+.lc-rail .lc-row.done .lc-ico,
+.lc-rail .lc-row.active .lc-ico,
+.lc-rail .lc-row.selected .lc-ico {
+  color: var(--foreground);
+}
+.lc-rail .lc-row.pending .lc-ico {
+  color: color-mix(in oklch, var(--muted-foreground) 62%, transparent);
+}
+
+/* label */
+.lc-rail .lc-rlabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 11px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.lc-rail .lc-rlabel .lc-t {
+  font-size: 13.5px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--foreground);
+}
+.lc-rail .lc-row.pending .lc-rlabel .lc-t {
+  color: var(--muted-foreground);
+}
+.lc-rail .lc-row.active .lc-rlabel .lc-t,
+.lc-rail .lc-row.selected .lc-rlabel .lc-t {
+  font-weight: 600;
+}
+.lc-rail .lc-row.done .lc-rlabel .lc-t {
+  font-weight: 500;
+}
+.lc-rail .lc-rlabel .lc-sub {
+  font-family: var(--font-plex-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+}
+
+/* task-split chevron + nested tasks */
+.lc-rail .lc-twrap .lc-row {
+  padding-right: 4px;
+}
+.lc-rail .lc-chev {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  transition: transform 0.18s ease, background 0.14s, color 0.14s;
+}
+.lc-rail .lc-chev svg {
+  width: 14px;
+  height: 14px;
+}
+.lc-rail .lc-chev:hover {
+  background: color-mix(in oklch, var(--muted) 70%, transparent);
+  color: var(--foreground);
+}
+.lc-rail .lc-twrap.open .lc-chev {
+  transform: rotate(90deg);
+}
+.lc-rail .lc-subtasks {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 38px;
+  display: flex;
+  flex-direction: column;
+}
+.lc-rail .lc-subrow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px 6px 12px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--muted-foreground);
+  border-left: 1.5px solid var(--dx-rule);
+  transition: background 0.14s, color 0.14s;
+}
+.lc-rail .lc-subrow:hover {
+  background: color-mix(in oklch, var(--muted) 55%, transparent);
+  color: var(--foreground);
+}
+.lc-rail .lc-subrow.selected {
+  background: color-mix(in oklch, var(--lc-accent) 11%, transparent);
+  color: var(--foreground);
+  border-left-color: var(--lc-accent);
+}
+.lc-rail .lc-subrow svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+.lc-rail .lc-subrow .lc-t {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lc-rail .lc-subrow .lc-sdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  border: 1.5px solid color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+}
+.lc-rail .lc-subrow.tactive .lc-sdot {
+  background: var(--lc-accent);
+  border-color: var(--lc-accent);
+}
+.lc-rail .lc-subrow.tdone .lc-sdot {
+  background: var(--dx-confirm);
+  border-color: var(--dx-confirm);
+}
+
+/* ───────── COMPACT MODE (68px) ───────── */
+.lc-rail.compact {
+  padding: 12px 9px 10px;
+  align-items: center;
+}
+.lc-rail.compact .lc-brand {
+  justify-content: center;
+  padding: 6px 0;
+}
+.lc-rail.compact .lc-word {
+  display: none;
+}
+.lc-rail.compact .lc-back {
+  justify-content: center;
+  padding: 7px;
+}
+.lc-rail.compact .lc-back .lc-lbl {
+  display: none;
+}
+.lc-rail.compact .lc-foot {
+  justify-content: center;
+  padding: 9px 7px;
+}
+.lc-rail.compact .lc-foot .lc-lbl {
+  display: none;
+}
+.lc-rail.compact .lc-pcard {
+  display: none;
+}
+.lc-rail.compact .lc-pchip {
+  display: flex;
+}
+.lc-rail.compact .lc-bracket {
+  display: none;
+}
+.lc-rail.compact .lc-phase + .lc-phase {
+  margin-top: 7px;
+}
+.lc-rail.compact .lc-ruler {
+  margin: 0;
+  padding: 4px 0 0;
+  align-items: center;
+}
+.lc-rail.compact .lc-rows {
+  align-items: center;
+}
+.lc-rail.compact .lc-row {
+  justify-content: center;
+  padding: 0;
+  margin: 3px auto;
+  width: 44px;
+  height: 44px;
+}
+.lc-rail.compact .lc-row.selected::before {
+  left: -4px;
+  top: 10px;
+  bottom: 10px;
+}
+.lc-rail.compact .lc-gutter {
+  display: none;
+}
+.lc-rail.compact .lc-ico {
+  margin: 0;
+  position: relative;
+}
+.lc-rail.compact .lc-rlabel,
+.lc-rail.compact .lc-chev {
+  display: none;
+}
+.lc-rail.compact .lc-twrap .lc-row {
+  padding-right: 0;
+}
+/* Child tasks in the compact rail: a centered column of icon-only chips, each a
+   34px square with a corner status dot (the title shows as a tooltip). */
+.lc-rail.compact .lc-subtasks {
+  padding: 1px 0 2px;
+  align-items: center;
+  gap: 1px;
+}
+.lc-rail.compact .lc-subrow {
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  margin: 1px auto;
+  border-left: 0;
+}
+.lc-rail.compact .lc-subrow .lc-t {
+  display: none;
+}
+.lc-rail.compact .lc-subrow .lc-sdot {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  border: 2px solid var(--sidebar);
+  box-sizing: content-box;
+}
+.lc-rail.compact .lc-ico::after {
+  content: "";
+  position: absolute;
+  right: -5px;
+  bottom: -4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 2px solid var(--sidebar);
+  box-sizing: content-box;
+}
+.lc-rail.compact .lc-row.pending .lc-ico::after {
+  background: transparent;
+  border: 1.5px solid color-mix(in oklch, var(--muted-foreground) 50%, transparent);
+  box-shadow: 0 0 0 2px var(--sidebar);
+}
+.lc-rail.compact .lc-row.active .lc-ico::after {
+  background: var(--lc-accent);
+}
+.lc-rail.compact .lc-row.done .lc-ico::after {
+  background: var(--dx-confirm);
+}

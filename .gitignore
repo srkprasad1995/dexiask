@@ -1,0 +1,33 @@
+# Secrets
+.env
+.env.*
+!.env.example
+**/git_token
+
+# OS / editor cruft
+.DS_Store
+.idea/
+.vscode/
+
+# Backend (Go)
+backend/bin/
+backend/*.out
+
+# Python (engine, indexer)
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+*.egg-info/
+
+# Web (Next.js)
+web/node_modules/
+web/.next/
+web/out/
+web/coverage/
+
+# Data / scratch
+sample-workspace/.dexiask/
+*.log

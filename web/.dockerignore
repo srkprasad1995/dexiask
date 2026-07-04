@@ -1,0 +1,40 @@
+# Build artifacts & deps (reinstalled/rebuilt inside the image)
+node_modules
+.next
+out
+build
+coverage
+*.tsbuildinfo
+
+# VCS / CI
+.git
+.github
+.gitignore
+
+# Local env & secrets (never bake into the image)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*credentials*.json
+*service-account*.json
+
+# Editor / OS cruft
+.DS_Store
+.idea
+.vscode
+*.swp
+*.swo
+
+# Docs & misc that don't affect the build
+Dockerfile
+.dockerignore
+README.md
+*.md
+
+# Test config not needed at build/runtime
+vitest.config.ts
+.next/cache

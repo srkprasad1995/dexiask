@@ -1,0 +1,116 @@
+"use client";
+
+import { useState, type ReactNode } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Database, Menu, MessageCircle, Plug } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { DexiaskAvatar } from "@/components/brand/dexiask-avatar";
+
+const NAV = [
+  { href: "/", label: "Chat", icon: MessageCircle },
+  { href: "/indexer", label: "Indexer", icon: Database },
+  { href: "/mcp", label: "MCP", icon: Plug },
+] as const;
+
+function Wordmark() {
+  return (
+    <Link href="/" className="flex items-center gap-2 px-1">
+      <DexiaskAvatar size={26} round={false} />
+      <span className="text-base font-semibold tracking-tight lowercase">
+        dexiask
+      </span>
+    </Link>
+  );
+}
+
+function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+  const pathname = usePathname();
+  return (
+    <nav className="flex flex-col gap-1">
+      {NAV.map(({ href, label, icon: Icon }) => {
+        const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+        return (
+          <Link
+            key={href}
+            href={href}
+            onClick={onNavigate}
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
+              active
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+  return (
+    <div className="flex h-full flex-col gap-4 p-3">
+      <div className="pt-1">
+        <Wordmark />
+      </div>
+      <NavLinks onNavigate={onNavigate} />
+    </div>
+  );
+}
+
+/**
+ * Minimal app shell: a left rail with the Dexiask wordmark + Chat/Indexer nav,
+ * a top bar with the page title and a theme toggle, and the page content. On
+ * mobile the rail collapses into a sheet.
+ */
+export function AppShell({
+  title,
+  children,
+}: {
+  title?: string;
+  children: ReactNode;
+}) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  return (
+    <div className="flex h-dvh w-full overflow-hidden">
+      <aside className="hidden w-56 shrink-0 border-r bg-sidebar md:block">
+        <Sidebar />
+      </aside>
+
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side="left" className="w-56 p-0">
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <Sidebar onNavigate={() => setMobileOpen(false)} />
+        </SheetContent>
+      </Sheet>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            aria-label="Open navigation"
+            onClick={() => setMobileOpen(true)}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          {title && <h1 className="text-sm font-medium">{title}</h1>}
+          <div className="ml-auto flex items-center gap-1">
+            <ThemeToggle />
+          </div>
+        </header>
+        <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+      </div>
+    </div>
+  );
+}
