@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,25 @@ import (
 	"github.com/dexiask/dexiask/internal/pkg/logger"
 	mocks "github.com/dexiask/dexiask/test/mocks"
 )
+
+// filler is an io.Reader that yields n bytes of 'a' without allocating them all,
+// so a test can stream more than the size cap cheaply.
+type filler struct{ remaining int64 }
+
+func (r *filler) Read(p []byte) (int, error) {
+	if r.remaining <= 0 {
+		return 0, io.EOF
+	}
+	n := int64(len(p))
+	if n > r.remaining {
+		n = r.remaining
+	}
+	for i := int64(0); i < n; i++ {
+		p[i] = 'a'
+	}
+	r.remaining -= n
+	return int(n), nil
+}
 
 func newAttachmentSvc(t *testing.T) (*attachmentService, *mocks.MockAttachmentRepository, string) {
 	t.Helper()
@@ -105,6 +125,35 @@ func TestStore_WritesUnderJail(t *testing.T) {
 	}
 	if string(data) != "hello" {
 		t.Fatalf("stored bytes = %q", data)
+	}
+}
+
+// TestStore_RejectsOversizeStream verifies the size cap is enforced on the byte
+// stream itself — not just the client-declared size — and that a rejected
+// upload leaves no file behind. The cap is shrunk so the test streams a handful
+// of bytes instead of the real 50 MB.
+func TestStore_RejectsOversizeStream(t *testing.T) {
+	svc, _, root := newAttachmentSvc(t)
+	svc.maxSize = 10
+
+	// Create must never be reached — the write is rejected before the DB insert
+	// (the repo mock has no expectations, so any call fails the test).
+	_, err := svc.Store(context.Background(), StoreInput{
+		ConversationID: "c1",
+		Filename:       "big.bin",
+		MediaType:      "application/octet-stream",
+		Size:           0,                       // client under-declares / omits the size
+		Reader:         &filler{remaining: 100}, // 100 bytes > 10-byte cap
+	})
+	if err == nil {
+		t.Fatal("expected Store to reject an over-cap stream")
+	}
+
+	// No partial file may remain under the workspace root.
+	attDir := filepath.Join(root, ".dexiask", "conversations", "c1", "attachments")
+	entries, _ := os.ReadDir(attDir)
+	if len(entries) != 0 {
+		t.Fatalf("expected no leftover files after rejection, found %d", len(entries))
 	}
 }
 

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -10,26 +11,43 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	// maxUploadBytes is the attachment file-size cap.
+	maxUploadBytes = 50 * 1024 * 1024 // 50 MB
+	// maxRequestBytes caps the whole multipart request a little above the file
+	// cap — headroom for multipart framing and the small form fields — so a
+	// legitimate max-size file still fits while an oversized upload is refused
+	// before it can spill large temporary files to disk during parsing.
+	maxRequestBytes = maxUploadBytes + 1*1024*1024
+)
+
 // AttachmentHandler serves the file attachment endpoints.
 //
 //	POST /v1/attachments        — upload a file
 //	GET  /v1/attachments/{id}   — serve a file by ID
 type AttachmentHandler struct {
-	svc    service.AttachmentService
-	logger *logger.Logger
+	svc     service.AttachmentService
+	logger  *logger.Logger
+	maxBody int64
 }
 
 // NewAttachmentHandler creates a new AttachmentHandler.
 func NewAttachmentHandler(svc service.AttachmentService, log *logger.Logger) *AttachmentHandler {
-	return &AttachmentHandler{svc: svc, logger: log}
+	return &AttachmentHandler{svc: svc, logger: log, maxBody: maxRequestBytes}
 }
-
-const maxUploadBytes = 50 * 1024 * 1024 // 50 MB
 
 // Upload handles POST /v1/attachments.
 // Expects multipart/form-data with fields: file (required), conversationId, uploadBucket.
 func (h *AttachmentHandler) Upload(w http.ResponseWriter, r *http.Request) {
+	// Hard-cap the request body so an oversized upload is rejected up front
+	// rather than buffered/spilled to disk while parsing the multipart form.
+	r.Body = http.MaxBytesReader(w, r.Body, h.maxBody)
 	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "upload exceeds max size", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "request too large or not multipart", http.StatusBadRequest)
 		return
 	}
