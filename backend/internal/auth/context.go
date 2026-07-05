@@ -20,6 +20,35 @@ type Principal struct {
 // IsAdmin reports whether the principal has the admin role.
 func (p Principal) IsAdmin() bool { return p.Role == "admin" }
 
+// IndexerAuthHeaders returns the headers the backend forwards to the indexer for
+// per-user repo gating. The indexer validates the token itself and only trusts an
+// "unrestricted" (admin) assertion when the internal token matches — so a
+// client cannot forge access. Returns nil when gating is disabled (no secret).
+//
+// Admins are unrestricted; members forward their GitHub token for the indexer to
+// validate live. The backend must first strip any client-supplied copies of
+// these headers.
+func IndexerAuthHeaders(internalToken string, isAdmin bool, userToken string) map[string]string {
+	if internalToken == "" {
+		return nil
+	}
+	h := map[string]string{"X-Internal-Token": internalToken}
+	if isAdmin {
+		h["X-Repo-Access"] = "all"
+	} else if userToken != "" {
+		h["X-User-Token"] = userToken
+	}
+	return h
+}
+
+// StripIndexerAuthHeaders removes any client-supplied repo-gating headers from an
+// inbound request so they can't be spoofed before the backend sets its own.
+func StripIndexerAuthHeaders(h interface{ Del(string) }) {
+	h.Del("X-Internal-Token")
+	h.Del("X-Repo-Access")
+	h.Del("X-User-Token")
+}
+
 type ctxKey struct{}
 
 // WithUser returns a copy of ctx carrying the principal.

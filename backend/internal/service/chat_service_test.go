@@ -81,7 +81,7 @@ func newChatFixture(t *testing.T, events []agent.Event) *chatFixture {
 	rm := agent.NewRunManager(logger.NewNop())
 
 	svc := service.NewChatService(reg, rm, fakeTx{}, convRepo, msgRepo, mcpRepo, service.WindowAssembler{}, attSvc,
-		nil, logger.NewNop(), "claude-test", 4096, "http://indexer:8080/mcp", "")
+		nil, logger.NewNop(), "claude-test", 4096, "http://indexer:8080/mcp", "", "")
 
 	return &chatFixture{svc: svc, rt: rt, convRepo: convRepo, msgRepo: msgRepo, mcpRepo: mcpRepo, attSvc: attSvc}
 }
@@ -194,7 +194,7 @@ func TestChatService_InjectsEnabledCustomMCPServers(t *testing.T) {
 	reg.Register(rt)
 	rm := agent.NewRunManager(logger.NewNop())
 	svc := service.NewChatService(reg, rm, fakeTx{}, convRepo, msgRepo, mcpRepo, service.WindowAssembler{}, attSvc,
-		nil, logger.NewNop(), "claude-test", 4096, "http://indexer:8080/mcp", "")
+		nil, logger.NewNop(), "claude-test", 4096, "http://indexer:8080/mcp", "", "")
 
 	// The service must ask for enabled servers only; return a single enabled one.
 	var gotFilter *model.ListMCPServersFilter
@@ -365,7 +365,7 @@ func TestChatService_InjectsMemory(t *testing.T) {
 
 	digester := &fakeDigester{digest: "\n\n## Memory\n\n### user / 42\n- prefers terse answers"}
 	svc := service.NewChatService(reg, rm, fakeTx{}, convRepo, msgRepo, mcpRepo, service.WindowAssembler{}, attSvc,
-		digester, logger.NewNop(), "claude-test", 4096, "http://indexer:8080/mcp", "http://memory:8080/mcp")
+		digester, logger.NewNop(), "claude-test", 4096, "http://indexer:8080/mcp", "http://memory:8080/mcp", "")
 
 	mcpRepo.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, nil)
 	convRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(&model.Conversation{ID: "conv-1", UserID: "42"}, nil)

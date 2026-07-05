@@ -143,6 +143,12 @@ def create_app(
                     await scheduler.stop()
 
     app = FastAPI(title="dexiask-indexer", lifespan=lifespan)
+    from .access import AccessMiddleware
+
+    # Per-user repo gating: parse the access headers into a context var for both
+    # REST + MCP enforcement. The indexer validates the caller's token itself.
+    app.add_middleware(AccessMiddleware, internal_token=settings.internal_token)
+
     from .observability import init_observability
 
     init_observability(app)
@@ -153,9 +159,13 @@ def create_app(
 
     @app.get("/v1/status")
     async def status() -> dict[str, Any]:
+        from .access import repo_allowed
+
         def _collect() -> list[dict[str, Any]]:
             repos = []
             for r in ctx.registry.repos:
+                if not repo_allowed(ctx, r.id):
+                    continue
                 mirror = ctx.mirror_for(r.id)
                 entry: dict[str, Any] = {"id": r.id, "indexed": mirror.exists()}
                 if mirror.exists():
@@ -234,10 +244,14 @@ def create_app(
     @app.get("/v1/repos")
     async def list_repos() -> dict[str, Any]:
         # Every registered repo (git URL or local /workspace path) with its
-        # current index status, so the web indexer page can render one row each.
+        # current index status, filtered to the caller's allowed set.
+        from .access import repo_allowed
+
         def _collect() -> list[dict[str, Any]]:
             repos: list[dict[str, Any]] = []
             for r in ctx.registry.repos:
+                if not repo_allowed(ctx, r.id):
+                    continue
                 mirror = ctx.mirror_for(r.id)
                 indexed = mirror.exists()
                 entry: dict[str, Any] = {

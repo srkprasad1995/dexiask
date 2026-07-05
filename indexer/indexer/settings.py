@@ -93,6 +93,13 @@ class Settings(BaseSettings):
     enable_domain_docs: bool = False
     domain_docs_model: str = "claude-opus-4-8"
 
+    # --- Per-user repo access gating ---
+    # Shared secret with the backend. When set, the indexer gates reads: it
+    # validates the caller's forwarded GitHub token against each repo itself, and
+    # only honours an "unrestricted" (admin) assertion carrying this token. Unset
+    # → no gating (single-user / no-auth).
+    internal_token: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

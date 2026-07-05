@@ -71,6 +71,9 @@ services:
       DEXIASK_ENABLE_DOMAIN_DOCS: ${DEXIASK_ENABLE_DOMAIN_DOCS:-false}
       DEXIASK_DOMAIN_DOCS_MODEL: ${DEXIASK_DOMAIN_DOCS_MODEL:-claude-opus-4-8}
       DEXIASK_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Shared secret with the backend → enables per-user repo gating (the indexer
+      # validates each caller's GitHub token itself). Empty = no gating.
+      DEXIASK_INTERNAL_TOKEN: ${DEXIASK_INTERNAL_TOKEN:-}
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
     ports:
       - "${DEXIASK_INDEXER_PORT:-25054}:8080"
@@ -114,6 +117,8 @@ services:
       DEXIASK_INDEXER_MCP_URL: ${DEXIASK_INDEXER_MCP_URL:-http://indexer:8080/mcp}
       DEXIASK_MEMORY_URL: ${DEXIASK_MEMORY_URL:-http://memory:8080}
       DEXIASK_MEMORY_MCP_URL: ${DEXIASK_MEMORY_MCP_URL:-http://memory:8080/mcp}
+      # Shared secret with the indexer for per-user repo gating (see indexer).
+      DEXIASK_INTERNAL_TOKEN: ${DEXIASK_INTERNAL_TOKEN:-}
       DEXIASK_MODEL: ${DEXIASK_MODEL:-claude-sonnet-5}
       DEXIASK_MAX_TOKENS: ${DEXIASK_MAX_TOKENS:-}
       DEXIASK_WORKSPACE_MOUNT: /workspace

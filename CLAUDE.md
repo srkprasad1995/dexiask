@@ -91,9 +91,16 @@ into every ask Job's `mcpServers[]`, so the agent can call `semantic_search`.
 The indexer proxy is transparent (any method+body), so new indexer endpoints work without
 backend changes; mutating ops are **admin-only** (see Auth). **Central git token**: indexing
 uses one shared token an admin sets via `PUT /v1/indexer/v1/git-token` (the indexer's global
-`settings.git_token`, persisted `0600`, never returned to the browser). Repos are indexed
-once and shared across all members of the single workspace — there is no per-user
-repo-access gating at search time. **Domain docs**: when `DEXIASK_ENABLE_DOMAIN_DOCS` is set, each index
+`settings.git_token`, persisted `0600`, never returned to the browser). **Per-user repo
+gating (enforced in the indexer)**: when `DEXIASK_INTERNAL_TOKEN` is set, the backend forwards
+the caller's identity to the indexer — `X-Internal-Token` (the shared secret), plus
+`X-Repo-Access: all` for admins or `X-User-Token: <their GitHub token>` for members (the
+backend strips any client-supplied copies). The **indexer** (`access.py` + `github.py`)
+validates each member's token against every repo via the GitHub API itself (cached), so a
+forged header or a direct hit on the indexer port only ever reveals what the caller's own
+token grants; the "unrestricted" admin path is honoured only with a valid secret. Members see
+only GitHub-verified repos; local/non-GitHub repos are admin-only. Enforced across
+`semantic_search`, repo-scoped tools, and the repo/status listings.  **Domain docs**: when `DEXIASK_ENABLE_DOMAIN_DOCS` is set, each index
 pass has an LLM generate architecture/module/concept docs, embedded into Qdrant with
 `content_type="doc"` so `semantic_search` returns them alongside code (the `code_only`
 filter never drops docs); browsable via `GET /v1/indexer/v1/docs/{repo}` and the web

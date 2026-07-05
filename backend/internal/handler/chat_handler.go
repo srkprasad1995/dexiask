@@ -100,6 +100,8 @@ func (h *ChatHandler) handleStart(w http.ResponseWriter, r *http.Request) {
 	result, err := h.chatSvc.Start(r.Context(), service.ChatRequest{
 		ConversationID: req.ConversationID,
 		UserID:         p.UserID,
+		GitHubToken:    p.GitHubToken,
+		IsAdmin:        p.IsAdmin(),
 		Messages:       req.Messages,
 		Attachments:    req.Attachments,
 		UploadBucket:   req.UploadBucket,

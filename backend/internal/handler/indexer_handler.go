@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/dexiask/dexiask/internal/auth"
 	"github.com/dexiask/dexiask/internal/config"
 	"github.com/dexiask/dexiask/internal/pkg/logger"
 	"go.uber.org/zap"
@@ -19,17 +20,21 @@ import (
 // (reindex, register/remove repos, set the git token) require the admin role;
 // reads (list repos, status, search, docs) are open to any member.
 type IndexerHandler struct {
-	indexerURL string
-	client     *http.Client
-	logger     *logger.Logger
+	indexerURL    string
+	internalToken string
+	client        *http.Client
+	logger        *logger.Logger
 }
 
-// NewIndexerHandler creates a new IndexerHandler.
-func NewIndexerHandler(indexerURL string, log *logger.Logger) *IndexerHandler {
+// NewIndexerHandler creates a new IndexerHandler. internalToken (when set) enables
+// per-user repo gating: the backend forwards the caller's identity to the indexer,
+// which validates access itself.
+func NewIndexerHandler(indexerURL, internalToken string, log *logger.Logger) *IndexerHandler {
 	return &IndexerHandler{
-		indexerURL: strings.TrimRight(indexerURL, "/"),
-		client:     &http.Client{},
-		logger:     log,
+		indexerURL:    strings.TrimRight(indexerURL, "/"),
+		internalToken: internalToken,
+		client:        &http.Client{},
+		logger:        log,
 	}
 }
 
@@ -41,11 +46,14 @@ func (h *IndexerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// Reads are open to any member; anything mutating (indexing, repo registry,
 	// git token) is admin-only.
+	var p auth.Principal
+	var ok bool
 	if r.Method == http.MethodGet {
-		if _, ok := requirePrincipal(w, r); !ok {
-			return
-		}
-	} else if _, ok := requireAdmin(w, r); !ok {
+		p, ok = requirePrincipal(w, r)
+	} else {
+		p, ok = requireAdmin(w, r)
+	}
+	if !ok {
 		return
 	}
 
@@ -70,6 +78,12 @@ func (h *IndexerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Single-workspace: inject the fixed workspace id so the indexer scopes results
 	// consistently with the engine's MCP calls.
 	proxyReq.Header.Set("X-Workspace-Id", config.FixedWorkspaceID)
+	// Per-user repo gating: forward the caller's identity so the indexer can
+	// validate access itself. proxyReq is built fresh (only Content-Type copied),
+	// so client-supplied gating headers are never forwarded.
+	for k, v := range auth.IndexerAuthHeaders(h.internalToken, p.IsAdmin(), p.GitHubToken) {
+		proxyReq.Header.Set(k, v)
+	}
 
 	resp, err := h.client.Do(proxyReq)
 	if err != nil {

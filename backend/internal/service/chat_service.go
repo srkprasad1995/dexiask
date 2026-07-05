@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/dexiask/dexiask/internal/agent"
+	"github.com/dexiask/dexiask/internal/auth"
 	"github.com/dexiask/dexiask/internal/config"
 	"github.com/dexiask/dexiask/internal/model"
 	pkgerrors "github.com/dexiask/dexiask/internal/pkg/errors"
@@ -40,8 +41,12 @@ type ChatRequest struct {
 	// ConversationID is the existing conversation to continue. Empty starts a new one.
 	ConversationID string
 	// UserID is the resolved GitHub user id owning this turn (dev id in fallback
-	// mode). Conversations and custom MCP servers are scoped to it.
+	// mode). Conversations are scoped to it.
 	UserID string
+	// GitHubToken / IsAdmin carry the caller's identity so the indexer can gate
+	// repo access (admins are unrestricted; members forward their token).
+	GitHubToken string
+	IsAdmin     bool
 	// Messages holds the new user turn (single element expected). History is
 	// loaded from the database; the client does not replay it.
 	Messages []agent.Message
@@ -89,10 +94,11 @@ type chatService struct {
 	memory        MemoryDigester
 	logger        *logger.Logger
 
-	model          string
-	maxTokens      int
-	indexerServers []agent.MCPServerConfig
-	memoryMCPURL   string
+	model         string
+	maxTokens     int
+	indexerMCPURL string
+	memoryMCPURL  string
+	internalToken string
 }
 
 // NewChatService creates a new ChatService. indexerMCPURL, when non-empty, is
@@ -114,31 +120,24 @@ func NewChatService(
 	maxTokens int,
 	indexerMCPURL string,
 	memoryMCPURL string,
+	internalToken string,
 ) ChatService {
-	var indexerServers []agent.MCPServerConfig
-	if strings.TrimSpace(indexerMCPURL) != "" {
-		indexerServers = []agent.MCPServerConfig{{
-			Name:        "indexer",
-			Type:        "http",
-			URL:         indexerMCPURL,
-			Description: "Semantic code search over the indexed workspace repositories (semantic_search).",
-		}}
-	}
 	return &chatService{
-		registry:       registry,
-		runMgr:         runMgr,
-		txManager:      txManager,
-		convRepo:       convRepo,
-		msgRepo:        msgRepo,
-		mcpRepo:        mcpRepo,
-		assembler:      assembler,
-		attachmentSvc:  attachmentSvc,
-		memory:         memoryDigester,
-		logger:         log,
-		model:          modelName,
-		maxTokens:      maxTokens,
-		indexerServers: indexerServers,
-		memoryMCPURL:   strings.TrimSpace(memoryMCPURL),
+		registry:      registry,
+		runMgr:        runMgr,
+		txManager:     txManager,
+		convRepo:      convRepo,
+		msgRepo:       msgRepo,
+		mcpRepo:       mcpRepo,
+		assembler:     assembler,
+		attachmentSvc: attachmentSvc,
+		memory:        memoryDigester,
+		logger:        log,
+		model:         modelName,
+		maxTokens:     maxTokens,
+		indexerMCPURL: strings.TrimSpace(indexerMCPURL),
+		memoryMCPURL:  strings.TrimSpace(memoryMCPURL),
+		internalToken: internalToken,
 	}
 }
 
@@ -268,7 +267,7 @@ func (s *chatService) Start(ctx context.Context, req ChatRequest) (*ChatStartRes
 	}
 
 	jobMessages := s.assembler.Assemble(history)
-	mcpServers := s.resolveMCPServers(dbCtx, userID)
+	mcpServers := s.resolveMCPServers(dbCtx, userID, req.IsAdmin, req.GitHubToken)
 
 	// Inject the per-user memory digest into the system prompt (best-effort).
 	systemPrompt := agent.SystemPromptForRole(askRole)
@@ -310,9 +309,21 @@ func (s *chatService) Start(ctx context.Context, req ChatRequest) (*ChatStartRes
 // indexer server followed by every enabled user-defined server. A failure to
 // load the custom servers is logged and degrades to indexer-only rather than
 // failing the turn.
-func (s *chatService) resolveMCPServers(ctx context.Context, userID string) []agent.MCPServerConfig {
-	servers := make([]agent.MCPServerConfig, 0, len(s.indexerServers)+2)
-	servers = append(servers, s.indexerServers...)
+func (s *chatService) resolveMCPServers(ctx context.Context, userID string, isAdmin bool, githubToken string) []agent.MCPServerConfig {
+	servers := make([]agent.MCPServerConfig, 0, 3)
+
+	// Indexer MCP, built per turn: the auth headers carry the caller's identity so
+	// the indexer gates repo access itself (admins unrestricted; members forward
+	// their GitHub token). No headers when the internal token is unset (no gating).
+	if s.indexerMCPURL != "" {
+		servers = append(servers, agent.MCPServerConfig{
+			Name:        "indexer",
+			Type:        "http",
+			URL:         s.indexerMCPURL,
+			Description: "Semantic code search over the indexed workspace repositories (semantic_search).",
+			Headers:     auth.IndexerAuthHeaders(s.internalToken, isAdmin, githubToken),
+		})
+	}
 
 	// The memory MCP is built per turn because its headers carry the caller's
 	// identity (a static server, like the indexer, cannot vary per user).

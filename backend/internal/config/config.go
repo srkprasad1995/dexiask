@@ -37,6 +37,10 @@ type Config struct {
 	// MemoryMCPURL is the engine-reachable memory MCP endpoint. Injected per turn
 	// with per-user headers so the agent can view/record memory. Inert when empty.
 	MemoryMCPURL string
+	// InternalToken is the shared secret the backend presents to the indexer so
+	// the indexer trusts an "unrestricted" (admin) assertion. Also enables the
+	// indexer's per-user repo gating. Empty → no gating.
+	InternalToken string
 	// Model is the Claude model the ask agent runs on.
 	Model string
 	// MaxTokens optionally caps output tokens per turn (0 = engine default).
@@ -107,6 +111,7 @@ func Load() *Config {
 		IndexerMCPURL:  os.Getenv("DEXIASK_INDEXER_MCP_URL"),
 		MemoryURL:      os.Getenv("DEXIASK_MEMORY_URL"),
 		MemoryMCPURL:   os.Getenv("DEXIASK_MEMORY_MCP_URL"),
+		InternalToken:  os.Getenv("DEXIASK_INTERNAL_TOKEN"),
 		Model:          getEnv("DEXIASK_MODEL", "claude-sonnet-5"),
 		MaxTokens:      maxTokens,
 		WorkspaceMount: getEnv("DEXIASK_WORKSPACE_MOUNT", "/workspace"),

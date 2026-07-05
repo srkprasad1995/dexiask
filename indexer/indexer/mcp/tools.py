@@ -19,6 +19,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from ..access import filter_allowed, repo_allowed
 from ..context import IndexerContext, RepoNotIndexedError
 from ..docs import load_domain_docs, load_skeleton
 from ..store import CONTENT_CODE, CONTENT_DOC
@@ -57,6 +58,7 @@ async def list_repos(ctx: IndexerContext, args: dict) -> str:
     rows = [
         {"id": r.id, "path": r.path, "url": r.url or "", "primary_branch": r.primary_branch}
         for r in ctx.registry.repos
+        if repo_allowed(ctx, r.id)
     ]
     return fmt.render_results(rows, fmt=_fmt(ctx, args), limit=len(rows) or 1, max_tokens=10_000)
 
@@ -136,6 +138,9 @@ def _search_hits(ctx: IndexerContext, args: dict) -> list[tuple[str, Any]]:
         repo_ids = [args["repo"]]
     else:
         repo_ids = [r.id for r in ctx.registry.repos]
+    # Restrict to the repos the caller may read (no-op when unrestricted). An
+    # explicitly-named but disallowed repo is silently dropped rather than leaked.
+    repo_ids = filter_allowed(ctx, repo_ids)
     qv = ctx.embedder.embed_query(args["query"])
     limit = int(args.get("limit") or ctx.settings.semantic_search_limit)
     code_only = (
@@ -471,6 +476,12 @@ async def dispatch(ctx: IndexerContext, name: str, args: dict[str, Any]) -> str:
     tool = {t.name: t for t in build_tools()}.get(name)
     if tool is None:
         return fmt.render_obj({"error": f"unknown tool {name!r}"}, req_fmt)
+    # Per-user gating: a tool scoped to a single repo the caller may not read is
+    # refused here (semantic_search fan-out + list_repos filter themselves).
+    if args.get("repo") and not repo_allowed(ctx, args["repo"]):
+        return fmt.render_obj(
+            {"error": f"repo {args['repo']!r} not found or not accessible"}, req_fmt
+        )
     try:
         return await tool.handler(ctx, args)
     except RepoNotIndexedError as e:

@@ -138,7 +138,7 @@ var ServiceModule = fx.Options(
 		log *logger.Logger,
 		cfg *config.Config,
 	) service.ChatService {
-		return service.NewChatService(reg, rm, tx, cr, mr, mcp, as, att, mem, log, cfg.Model, cfg.MaxTokens, cfg.IndexerMCPURL, cfg.MemoryMCPURL)
+		return service.NewChatService(reg, rm, tx, cr, mr, mcp, as, att, mem, log, cfg.Model, cfg.MaxTokens, cfg.IndexerMCPURL, cfg.MemoryMCPURL, cfg.InternalToken)
 	}),
 )
 
@@ -148,7 +148,7 @@ var HandlerModule = fx.Options(
 	fx.Provide(handler.NewConversationHandler),
 	fx.Provide(handler.NewAttachmentHandler),
 	fx.Provide(func(cfg *config.Config, log *logger.Logger) *handler.IndexerHandler {
-		return handler.NewIndexerHandler(cfg.IndexerURL, log)
+		return handler.NewIndexerHandler(cfg.IndexerURL, cfg.InternalToken, log)
 	}),
 	fx.Provide(func(cfg *config.Config, log *logger.Logger) *handler.MemoryHandler {
 		return handler.NewMemoryHandler(cfg.MemoryURL, log)
