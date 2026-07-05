@@ -25,8 +25,11 @@ It stays deliberately focused — one workspace (your mounted codebase), no team
 projects, no config UI — while supporting multiple users:
 
 - Claude agent (ask mode, read-only)
-- **GitHub sign-in** — per-user conversation history, git tokens, and repo-access checks
-  (or run with no OAuth app configured for a single local dev user)
+- **Sign in with a GitHub token** (OAuth optional) — per-user conversation history (in
+  the sidebar, paginated), memory, and MCP servers, with **admin/member roles** and
+  admin-only invites (or run with no auth configured for a single local dev user)
+- **Per-user repo access** — each member only sees the repos their own GitHub token
+  grants, validated inside the indexer
 - Streaming chat with rich rendering (code, mermaid, math)
 - File upload (attach files to a message)
 - Custom skills (drop-in `SKILL.md` packs)
@@ -129,27 +132,40 @@ The indexer indexes the **default branch** of any git repo under your mounted
 3. Ask the agent a question about the code — it will call `semantic_search`
    automatically (you'll see the tool card in the chat).
 
-### Private repos (git token)
+### Private repos (central token) & per-user gating
 
-When **GitHub sign-in is enabled**, indexing a **private** repo just works: the
-backend uses your own GitHub OAuth token to clone it (and first checks you actually
-have access), injected as `X-Git-Token` to the indexer — no manual token needed.
+Indexing uses **one central git token** an **admin** sets on the **Indexer** page →
+**Git access token** → paste a GitHub PAT → **Save**. It is held server-side by the
+indexer, persisted `0600`, and **never returned to the browser** — injected as an
+`Authorization` header via `GIT_CONFIG_*`, never placed in a mirror's stored remote
+URL. Clear it any time with **Clear**.
 
-Otherwise (dev-fallback mode), set a git access token on the **Indexer** page →
-**Git access token** → paste a token (e.g. a GitHub PAT) → **Save**. It is held
-server-side by the indexer, persisted `0600`, and **never returned to the browser**.
-Injected as an `Authorization` header via `GIT_CONFIG_*`, never placed in a mirror's
-stored remote URL. Clear it any time with **Clear**.
+Members still only see the repos **their own GitHub token** can access: the indexer
+validates every member's token against each repo via the GitHub API *itself* (cached),
+so a forged header — or a direct hit on the indexer port — only ever reveals what the
+caller's token grants. Admins are unrestricted; local / non-GitHub repos are admin-only.
+This gating (across `semantic_search`, repo-scoped tools, and repo listings) turns on
+when `DEXIASK_INTERNAL_TOKEN` is set on both the backend and the indexer.
 
-## Sign in (GitHub OAuth)
+## Sign in & roles
 
-To enable multi-user login, create a GitHub OAuth app (callback
+Dexiask is multi-user. The **primary login is a GitHub token**: paste a GitHub PAT on
+`/login` — it's validated against the GitHub API, stored AES-GCM encrypted, and becomes
+your identity (also used for per-user repo access). Auth turns on once the session infra
+is configured — set `DEXIASK_SESSION_SECRET`, `DEXIASK_TOKEN_ENC_KEY`
+(`openssl rand -hex 32`), and web `AUTH_ENABLED=true`. Leave them blank to run in
+**dev-fallback** mode (a single local **admin** user, no login) — the zero-config default.
+
+**GitHub OAuth** is optional on top: create a GitHub OAuth app (callback
 `http://localhost:25051/api/auth/callback`) and set `DEXIASK_GITHUB_CLIENT_ID` /
-`_SECRET`, `DEXIASK_SESSION_SECRET`, `DEXIASK_TOKEN_ENC_KEY` (`openssl rand -hex 32`),
-and web `AUTH_ENABLED=true` in `.env`. Users then sign in with GitHub; conversations,
-custom MCP servers, git tokens, and memory are scoped per user. Leave the client
-id/secret blank to run in **dev-fallback** mode (a single local user, no login) — the
-zero-config default.
+`_SECRET` + `DEXIASK_OAUTH_CALLBACK_URL` to add a one-click sign-in button.
+
+**Two roles — `admin` and `member`.** The first user to sign in bootstraps as admin;
+everyone else needs an admin-created **invite** (keyed by GitHub login, consumed on first
+login) or login is refused. Members get chat, and their own history / memory / MCP
+servers. Admin-only: the **Team** page (invites + roster), MCP-server management, indexer
+mutations (reindex / register / the central git token), and memory edits + consolidation.
+Conversations, MCP servers, and memory are all scoped per user.
 
 ## Memory
 
@@ -202,8 +218,9 @@ Everything is env-driven — see `.env.example` for the full list. The essential
 | `VOYAGE_API_KEY` | Indexer embedding credential (required) |
 | `DEXIASK_MODEL` | Claude model for ask mode (default `claude-sonnet-5`) |
 | `DEXIASK_WORKSPACE_PATH` | Host codebase mounted at `/workspace` |
-| `DEXIASK_GITHUB_CLIENT_ID` / `_SECRET` | Enable GitHub login (blank = dev-fallback) |
-| `DEXIASK_SESSION_SECRET` / `_TOKEN_ENC_KEY` | Session signing + OAuth-token encryption (auth mode) |
+| `DEXIASK_SESSION_SECRET` / `_TOKEN_ENC_KEY` | Session signing + GitHub-token encryption — enables auth (token login) |
+| `DEXIASK_GITHUB_CLIENT_ID` / `_SECRET` | Add optional GitHub **OAuth** on top of token login (blank = token login only) |
+| `DEXIASK_INTERNAL_TOKEN` | Shared backend↔indexer secret; enables per-user repo gating in the indexer |
 | `DEXIASK_ENABLE_DOMAIN_DOCS` | Generate + index LLM domain docs during indexing |
 | `DEXIASK_DREAM_MODEL` / `_DREAM_INTERVAL` | Memory consolidation model + cadence (`0` disables) |
 | `SLACK_APP_TOKEN` / `SLACK_BOT_TOKEN` | Enable the Slack bot |

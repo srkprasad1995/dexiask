@@ -5,12 +5,15 @@ The Go HTTP service at the center of Dexiask. It:
 1. **Streams chat over SSE** by bridging to the Claude **engine** via the Agent Job Protocol.
 2. **Persists** conversations, messages, and attachments in Postgres (GORM).
 3. Handles **file-upload attachments** onto the shared `/workspace` volume (path-jailed).
-4. **Reverse-proxies** the indexer control-plane (`/v1/indexer/*`).
-5. Runs a **Slack Socket Mode bot** as a second front-end onto the same chat service.
+4. **Authenticates users** (GitHub token login + optional OAuth), enforces `admin`/`member`
+   roles + invites, and scopes every row to the resolved GitHub user id.
+5. **Reverse-proxies** the indexer + memory control-planes (`/v1/indexer/*`, `/v1/memory/*`),
+   forwarding each caller's identity so the indexer gates repos per user.
+6. Runs a **Slack Socket Mode bot** as a second front-end onto the same chat service.
 
-It is a single-user, single-workspace backend:
-**no auth, no workspaces, no projects, no config tables, no analytics/memory.** One role
-(`ask`), one runtime (`claude`).
+It is a **multi-user, single-workspace** backend: one mounted codebase (`WorkspaceID` is
+fixed) while `UserID` is the real GitHub user id. One role for the agent (`ask`), one
+runtime (`claude`). No teams/projects/config tables/analytics. See `internal/auth`.
 
 ## Architecture
 
