@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"go.uber.org/zap"
 
@@ -517,8 +518,10 @@ func deriveTitle(content string) string {
 		title = title[:idx]
 	}
 	title = strings.TrimSpace(title)
-	if len(title) > 80 {
-		title = title[:77] + "..."
+	// Truncate on a rune boundary — slicing by byte can split a multibyte rune
+	// and yield an invalid-UTF-8 title.
+	if utf8.RuneCountInString(title) > 80 {
+		title = string([]rune(title)[:77]) + "..."
 	}
 	if title == "" {
 		title = "New conversation"
