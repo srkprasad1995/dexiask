@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Brain, Database, Menu, MessageCircle, Plug, Users } from "lucide-react";
@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { DexiaskAvatar } from "@/components/brand/dexiask-avatar";
 import { UserBadge } from "@/components/shell/user-badge";
+import { ConversationHistory } from "@/components/shell/conversation-history";
 
 const NAV = [
   { href: "/", label: "Chat", icon: MessageCircle, adminOnly: false },
@@ -62,11 +63,18 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <div className="flex h-full flex-col gap-4 p-3">
+    <div className="flex h-full min-h-0 flex-col gap-4 p-3">
       <div className="pt-1">
         <Wordmark />
       </div>
       <NavLinks onNavigate={onNavigate} />
+      <div className="-mx-1 min-h-0 flex-1 border-t pt-2">
+        <Suspense
+          fallback={<p className="px-2 py-4 text-xs text-muted-foreground">Loading…</p>}
+        >
+          <ConversationHistory onNavigate={onNavigate} />
+        </Suspense>
+      </div>
     </div>
   );
 }

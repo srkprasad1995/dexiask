@@ -1,5 +1,7 @@
+import { Suspense } from "react";
+
 import { AppShell } from "@/components/shell/app-shell";
-import { ChatWorkspace } from "@/components/chat/chat-workspace";
+import { ChatRoute } from "@/components/chat/chat-route";
 
 const SUGGESTIONS = [
   "How is authentication handled in this codebase?",
@@ -15,7 +17,9 @@ export const metadata = {
 export default function ChatPage() {
   return (
     <AppShell title="Chat">
-      <ChatWorkspace suggestions={SUGGESTIONS} />
+      <Suspense fallback={null}>
+        <ChatRoute suggestions={SUGGESTIONS} />
+      </Suspense>
     </AppShell>
   );
 }

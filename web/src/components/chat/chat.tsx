@@ -71,13 +71,25 @@ export function Chat({
       onError: (err) => toast.error(err.message || "Something went wrong"),
     });
 
-  // Reopen a past conversation: on mount, load its transcript and point the ref
-  // at it so follow-up turns attach to the same backend conversation. Chat is
-  // remounted (keyed) when the selection changes, so this runs once per open.
+  // The conversation id this Chat itself just created, so the URL catching up to
+  // it (loadConversationId → that id) doesn't trigger a reload mid-stream.
+  const createdRef = useRef<string | null>(null);
+
+  // Drive the open conversation off `loadConversationId` (the ?c URL param):
+  //   - null → a new chat: clear the transcript.
+  //   - the id we just created → URL caught up, do nothing.
+  //   - any other id → an external open: load that transcript.
   useEffect(() => {
-    if (!loadConversationId) return;
+    if (!loadConversationId) {
+      conversationIdRef.current = null;
+      createdRef.current = null;
+      setMessages([]);
+      return;
+    }
     conversationIdRef.current = loadConversationId;
+    if (loadConversationId === createdRef.current) return;
     let active = true;
+    stop(); // cancel any in-flight stream before swapping transcripts
     fetchConversationMessages(loadConversationId)
       .then((msgs) => {
         if (active) setMessages(msgs);
@@ -88,7 +100,7 @@ export function Chat({
     return () => {
       active = false;
     };
-  }, [loadConversationId, setMessages]);
+  }, [loadConversationId, setMessages, stop]);
 
   // Capture the backend-assigned conversation id from the first
   // `data-conversation` SSE frame so follow-up turns reference the same
@@ -100,6 +112,7 @@ export function Chat({
       for (const part of msg.parts ?? []) {
         if (part.type === "data-conversation") {
           conversationIdRef.current = part.data.id;
+          createdRef.current = part.data.id;
           onConversationCreated?.(part.data.id);
           return;
         }
