@@ -61,6 +61,16 @@ func IsNotFound(err error) bool {
 	return errors.As(err, &appErr) && appErr.Code == CodeNotFound
 }
 
+// Message returns the user-facing message for err without the internal code
+// prefix (used for HTTP error bodies).
+func Message(err error) string {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
+		return appErr.Message
+	}
+	return err.Error()
+}
+
 // HTTPStatus maps an error to an HTTP status code, defaulting to 500.
 func HTTPStatus(err error) int {
 	var appErr *AppError

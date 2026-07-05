@@ -45,7 +45,8 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// writeServiceError maps an application error to an HTTP status + message.
+// writeServiceError maps an application error to an HTTP status + user-facing
+// message (without the internal code prefix).
 func writeServiceError(w http.ResponseWriter, err error) {
-	writeError(w, pkgerrors.HTTPStatus(err), err.Error())
+	writeError(w, pkgerrors.HTTPStatus(err), pkgerrors.Message(err))
 }
