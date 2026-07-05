@@ -7,6 +7,7 @@ import {
   FileCode,
   Folder,
   GitBranch,
+  Info,
   KeyRound,
   Loader2,
   Plus,
@@ -449,6 +450,34 @@ function StatusLine() {
 }
 
 /**
+ * Shown when the indexer resolved no embedding provider: semantic search is off
+ * and the indexer has degraded to lexical/git/read search. Guides the user to
+ * every way to re-enable it — a hosted key or the local sidecar. Hidden while
+ * status is loading and when semantic search is available.
+ */
+export function EmbeddingsBanner() {
+  const { data } = useIndexerStatus();
+  const embeddings = data?.embeddings;
+  if (!embeddings || embeddings.available) return null;
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-dx-build-bd bg-dx-build-bg px-3 py-2 text-sm">
+      <Info className="mt-0.5 size-4 shrink-0 text-dx-build" />
+      <p className="text-muted-foreground">
+        Semantic search off — using lexical search; add{" "}
+        <code className="font-plex-mono text-foreground">VOYAGE_API_KEY</code>{" "}
+        or{" "}
+        <code className="font-plex-mono text-foreground">OPENAI_API_KEY</code>,
+        or run local mode (
+        <code className="font-plex-mono text-foreground">
+          COMPOSE_PROFILES=local
+        </code>
+        ) to enable it.
+      </p>
+    </div>
+  );
+}
+
+/**
  * The git access token panel. Lets the user provision a token so the indexer
  * can clone private repositories. The token is held server-side by the indexer
  * and never displayed — the UI only reflects whether one is configured.
@@ -550,6 +579,7 @@ export function IndexerView() {
           </p>
         </header>
 
+        <EmbeddingsBanner />
         {/* Repo registration + the central git token are admin-only. */}
         {isAdmin && <AddRepoForm />}
         <RepoList admin={isAdmin} />

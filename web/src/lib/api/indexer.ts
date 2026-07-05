@@ -42,9 +42,27 @@ export interface ReposResponse {
   repos: Repo[];
 }
 
+/** Semantic-search (embeddings) availability reported by the indexer. */
+export interface EmbeddingsStatus {
+  /**
+   * The embedding provider actually in use, resolved from the indexer's "auto"
+   * setting: "voyage" | "openai" | "ollama" (the local sidecar), or "" when
+   * none is configured.
+   */
+  provider?: string;
+  /**
+   * Whether semantic search is actually usable — true only when both an
+   * embedder (needs an embeddings key or the local sidecar) and the vector
+   * store are wired. When false the indexer degrades to lexical/git/read search.
+   */
+  available: boolean;
+}
+
 export interface IndexerStatus {
   /** Overall health/progress string, e.g. "ready" | "indexing". */
   status?: string;
+  /** Semantic-search availability, so the UI can surface a lexical-fallback banner. */
+  embeddings?: EmbeddingsStatus;
   repos?: Repo[];
 }
 
