@@ -72,6 +72,11 @@ class IndexService:
             mirror = self._mirror(repo, token)
             mirror.ensure()  # clone/fetch (authenticated for private remotes)
             git = mirror.repo()
+            # A repo with no pinned branch follows the source's default (e.g.
+            # ``trunk``). Capture what the mirror actually tracks so docs, the
+            # reconcile, and every read tool key off the real branch.
+            if not repo.primary_branch:
+                repo.primary_branch = git.head_branch()
             # High-level docs need only git, so they refresh even in degraded mode.
             self._refresh_docs(repo, git)
 

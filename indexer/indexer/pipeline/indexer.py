@@ -123,7 +123,8 @@ class Pipeline:
     # ------------------------------------------------------------ entrypoint
     def reconcile(self, repo: RepoConfig, git: GitRepo, *, full: bool = False) -> IndexResult:
         """Make the index match the primary-branch tip exactly."""
-        branch = repo.primary_branch
+        # Unpinned repos follow the mirror's default branch (its HEAD).
+        branch = repo.primary_branch or git.head_branch()
         self.store.ensure_collection(repo.collection, self.embedder.dim)
         tip = git.resolve(branch)
         desired: dict[str, str] = {

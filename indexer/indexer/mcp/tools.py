@@ -245,7 +245,7 @@ async def get_chunk(ctx: IndexerContext, args: dict) -> str:
 
 async def get_overview(ctx: IndexerContext, args: dict) -> str:
     repo = ctx.repo_config(args["repo"])
-    skel = load_skeleton(ctx.settings.data_dir, repo.id, repo.primary_branch)
+    skel = load_skeleton(ctx.settings.data_dir, repo.id, ctx.primary_branch(repo.id))
     if not skel:
         return fmt.render_obj({"error": f"no docs for {repo.id!r} yet — index it first"}, _fmt(ctx, args))
     summary = {
@@ -261,7 +261,8 @@ async def get_overview(ctx: IndexerContext, args: dict) -> str:
 async def get_domain_docs(ctx: IndexerContext, args: dict) -> str:
     """List the generated domain-knowledge docs for a repo (title/category/body)."""
     repo = ctx.repo_config(args["repo"])
-    docs = load_domain_docs(ctx.settings.data_dir, repo.id, repo.primary_branch)
+    branch = ctx.primary_branch(repo.id)
+    docs = load_domain_docs(ctx.settings.data_dir, repo.id, branch)
     if not docs:
         return fmt.render_obj(
             {"error": f"no domain docs for {repo.id!r} — enable domain docs and index it"},
@@ -270,13 +271,13 @@ async def get_domain_docs(ctx: IndexerContext, args: dict) -> str:
     rows = [{"title": d["title"], "category": d["category"], "body": d["body"]} for d in docs]
     return fmt.render_results(
         rows, fmt=_fmt(ctx, args), limit=_limit(ctx, args), max_tokens=_maxtok(ctx, args),
-        extra={"repo": repo.id, "branch": repo.primary_branch},
+        extra={"repo": repo.id, "branch": branch},
     )
 
 
 async def get_docs(ctx: IndexerContext, args: dict) -> str:
     repo = ctx.repo_config(args["repo"])
-    skel = load_skeleton(ctx.settings.data_dir, repo.id, repo.primary_branch)
+    skel = load_skeleton(ctx.settings.data_dir, repo.id, ctx.primary_branch(repo.id))
     if not skel:
         return fmt.render_obj({"error": f"no docs for {repo.id!r} yet — index it first"}, _fmt(ctx, args))
     syms = skel.get("symbols", [])
@@ -285,7 +286,7 @@ async def get_docs(ctx: IndexerContext, args: dict) -> str:
         syms = [s for s in syms if s["path"].startswith(prefix)]
     return fmt.render_results(
         syms, fmt=_fmt(ctx, args), limit=_limit(ctx, args), max_tokens=_maxtok(ctx, args),
-        extra={"path": prefix or "/", "branch": repo.primary_branch},
+        extra={"path": prefix or "/", "branch": ctx.primary_branch(repo.id)},
     )
 
 
