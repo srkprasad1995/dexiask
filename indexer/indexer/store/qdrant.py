@@ -143,3 +143,8 @@ class QdrantStore:
 
     def count(self, name: str) -> int:
         return self._client.count(collection_name=name).count
+
+    def drop_collection(self, name: str) -> None:
+        """Delete a repo's whole collection (used when a repo is removed)."""
+        if self._client.collection_exists(name):
+            self._client.delete_collection(collection_name=name)

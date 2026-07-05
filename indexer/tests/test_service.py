@@ -41,6 +41,22 @@ def _repo(svc):
     return svc.registry.repos[0]
 
 
+def test_purge_repo_removes_all_index_artifacts(service):
+    svc, store, _ = service
+    repo = _repo(svc)
+    svc.index_repo("r")
+    mirror = svc._mirror(repo)
+    assert mirror.exists()
+    assert store.count(repo.collection) == 3
+
+    svc.purge_repo(repo)
+
+    assert not mirror.exists()  # bare mirror dir gone
+    assert not store._client.collection_exists(repo.collection)  # collection dropped
+    assert svc.state.get_commit(repo.id) is None  # state forgotten
+    assert svc.state.indexed_paths(repo.id) == {}
+
+
 def test_index_repo_reindex_is_idempotent(service):
     svc, store, _ = service
     svc.index_repo("r")

@@ -12,11 +12,13 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   useAddRepo,
+  useDeleteRepo,
   useDomainDocs,
   useGitTokenStatus,
   useIndexerStatus,
@@ -123,6 +125,7 @@ function AddRepoForm() {
 /** One repo row: label, index status, and (for admins) a per-repo reindex button. */
 function RepoRow({ repo, admin }: { repo: Repo; admin: boolean }) {
   const reindex = useReindex();
+  const deleteRepo = useDeleteRepo();
   const isPath = !repo.url;
   const Icon = isPath ? Folder : GitBranch;
 
@@ -161,6 +164,33 @@ function RepoRow({ repo, admin }: { repo: Repo; admin: boolean }) {
             className={cn("h-3.5 w-3.5", reindex.isPending && "animate-spin")}
           />
           Reindex
+        </Button>
+      )}
+      {admin && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 text-destructive hover:text-destructive"
+          disabled={deleteRepo.isPending}
+          onClick={() => {
+            if (
+              !window.confirm(
+                `Delete ${repo.id}? This removes its registration and its entire index (this cannot be undone).`,
+              )
+            )
+              return;
+            deleteRepo.mutate(repo.id, {
+              onSuccess: () => toast.success(`Deleted ${repo.id}`),
+              onError: (err) => toast.error(err.message || "Delete failed"),
+            });
+          }}
+        >
+          {deleteRepo.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Trash2 className="h-3.5 w-3.5" />
+          )}
+          Delete
         </Button>
       )}
     </div>

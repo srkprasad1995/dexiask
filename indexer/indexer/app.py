@@ -311,6 +311,11 @@ def create_app(
 
     @app.delete("/v1/repos/{repo_id}")
     async def deregister_repo(repo_id: str) -> dict[str, Any]:
+        # Purge the index artifacts (collection, mirror, docs, state) before
+        # dropping the registration so nothing is left orphaned on the volume.
+        repo = ctx.registry.get(repo_id)
+        if repo is not None:
+            await asyncio.to_thread(service.purge_repo, repo)
         removed = repo_store.delete(repo_id)
         ctx.registry = IndexerConfig(
             repos=[r for r in ctx.registry.repos if r.id != repo_id],
