@@ -124,3 +124,41 @@ func (mr *MockChatServiceMockRecorder) Stop(conversationID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockChatService)(nil).Stop), conversationID)
 }
+
+// MockMemoryDigester is a mock of MemoryDigester interface.
+type MockMemoryDigester struct {
+	ctrl     *gomock.Controller
+	recorder *MockMemoryDigesterMockRecorder
+	isgomock struct{}
+}
+
+// MockMemoryDigesterMockRecorder is the mock recorder for MockMemoryDigester.
+type MockMemoryDigesterMockRecorder struct {
+	mock *MockMemoryDigester
+}
+
+// NewMockMemoryDigester creates a new mock instance.
+func NewMockMemoryDigester(ctrl *gomock.Controller) *MockMemoryDigester {
+	mock := &MockMemoryDigester{ctrl: ctrl}
+	mock.recorder = &MockMemoryDigesterMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockMemoryDigester) EXPECT() *MockMemoryDigesterMockRecorder {
+	return m.recorder
+}
+
+// Digest mocks base method.
+func (m *MockMemoryDigester) Digest(ctx context.Context, userID string) string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Digest", ctx, userID)
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// Digest indicates an expected call of Digest.
+func (mr *MockMemoryDigesterMockRecorder) Digest(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Digest", reflect.TypeOf((*MockMemoryDigester)(nil).Digest), ctx, userID)
+}

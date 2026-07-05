@@ -3,9 +3,10 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Brain, Database, Menu, MessageCircle, Plug } from "lucide-react";
+import { Brain, Database, Menu, MessageCircle, Plug, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useIsAdmin } from "@/lib/auth/use-user";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -13,10 +14,11 @@ import { DexiaskAvatar } from "@/components/brand/dexiask-avatar";
 import { UserBadge } from "@/components/shell/user-badge";
 
 const NAV = [
-  { href: "/", label: "Chat", icon: MessageCircle },
-  { href: "/indexer", label: "Indexer", icon: Database },
-  { href: "/memory", label: "Memory", icon: Brain },
-  { href: "/mcp", label: "MCP", icon: Plug },
+  { href: "/", label: "Chat", icon: MessageCircle, adminOnly: false },
+  { href: "/indexer", label: "Indexer", icon: Database, adminOnly: false },
+  { href: "/memory", label: "Memory", icon: Brain, adminOnly: false },
+  { href: "/mcp", label: "MCP", icon: Plug, adminOnly: true },
+  { href: "/admin", label: "Team", icon: Users, adminOnly: true },
 ] as const;
 
 function Wordmark() {
@@ -32,9 +34,10 @@ function Wordmark() {
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const isAdmin = useIsAdmin();
   return (
     <nav className="flex flex-col gap-1">
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {NAV.filter((item) => !item.adminOnly || isAdmin).map(({ href, label, icon: Icon }) => {
         const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
         return (
           <Link

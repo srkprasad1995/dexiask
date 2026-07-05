@@ -76,9 +76,7 @@ func (r *mcpServerRepository) List(ctx context.Context, filter *model.ListMCPSer
 	if err := filter.Validate(); err != nil {
 		return nil, pkgerrors.InvalidArgument(err.Error())
 	}
-	db := r.txManager.GetDB(ctx).
-		Where("workspace_id = ?", filter.WorkspaceID).
-		Where("user_id = ?", filter.UserID)
+	db := r.txManager.GetDB(ctx).Where("workspace_id = ?", filter.WorkspaceID)
 	if filter.EnabledOnly {
 		db = db.Where("enabled = ?", true)
 	}

@@ -8,13 +8,17 @@ package auth
 import "context"
 
 // Principal is the authenticated identity resolved for a request. UserID is the
-// GitHub numeric user id (as a string); GitHubToken is the decrypted OAuth token
-// used for private-repo indexing and repo-access checks.
+// GitHub numeric user id (as a string); GitHubToken is the decrypted GitHub
+// token; Role is "admin" or "member".
 type Principal struct {
 	UserID      string
 	Login       string
+	Role        string
 	GitHubToken string
 }
+
+// IsAdmin reports whether the principal has the admin role.
+func (p Principal) IsAdmin() bool { return p.Role == "admin" }
 
 type ctxKey struct{}
 

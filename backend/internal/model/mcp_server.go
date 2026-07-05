@@ -38,13 +38,11 @@ type CreateMCPServerInput struct {
 	Enabled     bool
 }
 
-// Validate validates the create input.
+// Validate validates the create input. UserID is recorded for audit (the admin
+// who created the server) but is optional.
 func (i *CreateMCPServerInput) Validate() error {
 	if i.WorkspaceID == "" {
 		return ErrInvalidInput("workspace_id is required")
-	}
-	if i.UserID == "" {
-		return ErrInvalidInput("user_id is required")
 	}
 	if i.Name == "" {
 		return ErrInvalidInput("name is required")
@@ -86,10 +84,11 @@ func (i *UpdateMCPServerInput) Validate() error {
 	return nil
 }
 
-// ListMCPServersFilter represents filters for listing MCP servers.
+// ListMCPServersFilter represents filters for listing MCP servers. MCP servers
+// are workspace-wide (admin-managed) and injected into every user's turn, so the
+// list is not user-scoped.
 type ListMCPServersFilter struct {
 	WorkspaceID string
-	UserID      string
 	// EnabledOnly restricts the result to enabled servers (used at injection time).
 	EnabledOnly bool
 }
@@ -98,9 +97,6 @@ type ListMCPServersFilter struct {
 func (f *ListMCPServersFilter) Validate() error {
 	if f.WorkspaceID == "" {
 		return ErrInvalidInput("workspace_id is required")
-	}
-	if f.UserID == "" {
-		return ErrInvalidInput("user_id is required")
 	}
 	return nil
 }

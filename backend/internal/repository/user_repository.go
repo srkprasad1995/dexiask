@@ -19,6 +19,10 @@ import (
 type UserRepository interface {
 	Upsert(ctx context.Context, input *model.UpsertUserInput) (*model.User, error)
 	GetByID(ctx context.Context, id string) (*model.User, error)
+	// Count returns the total number of users (used to bootstrap the first admin).
+	Count(ctx context.Context) (int64, error)
+	// List returns all users (admin user management).
+	List(ctx context.Context) ([]*model.User, error)
 }
 
 type userRepository struct {
@@ -40,14 +44,16 @@ func (r *userRepository) Upsert(ctx context.Context, input *model.UpsertUserInpu
 		Login:          input.Login,
 		Name:           input.Name,
 		AvatarURL:      input.AvatarURL,
+		Role:           input.Role,
 		EncryptedToken: input.EncryptedToken,
 	}
-	// On conflict (returning user) refresh the mutable fields, including the
-	// freshly-issued encrypted OAuth token.
+	// On conflict (returning user) refresh the mutable fields, including role and
+	// the freshly-issued encrypted token. The caller resolves role to the user's
+	// existing role for returning users, so this never silently changes it.
 	res := r.txManager.GetDB(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
-			"login", "name", "avatar_url", "encrypted_token", "updated_at",
+			"login", "name", "avatar_url", "role", "encrypted_token", "updated_at",
 		}),
 	}).Create(user)
 	if res.Error != nil {
@@ -55,6 +61,22 @@ func (r *userRepository) Upsert(ctx context.Context, input *model.UpsertUserInpu
 		return nil, pkgerrors.Internal("failed to upsert user", res.Error)
 	}
 	return user, nil
+}
+
+func (r *userRepository) Count(ctx context.Context) (int64, error) {
+	var n int64
+	if err := r.txManager.GetDB(ctx).Model(&model.User{}).Count(&n).Error; err != nil {
+		return 0, pkgerrors.Internal("failed to count users", err)
+	}
+	return n, nil
+}
+
+func (r *userRepository) List(ctx context.Context) ([]*model.User, error) {
+	var users []*model.User
+	if err := r.txManager.GetDB(ctx).Order("created_at ASC").Find(&users).Error; err != nil {
+		return nil, pkgerrors.Internal("failed to list users", err)
+	}
+	return users, nil
 }
 
 func (r *userRepository) GetByID(ctx context.Context, id string) (*model.User, error) {

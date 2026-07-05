@@ -183,6 +183,43 @@ def test_git_token_mutation_visible_to_service(sample_repo, tmp_path):
     assert service.settings.git_token == "tok-123"
 
 
+def test_reindex_git_error_returns_502_with_hint(sample_repo, tmp_path):
+    """A clone/fetch failure surfaces a clean 502 + actionable hint, not a 500."""
+    from fastapi.testclient import TestClient
+
+    from indexer.app import create_app
+    from indexer.git.repo import GitError
+    from indexer.lock import InMemoryLock
+    from indexer.pipeline import InMemoryStateStore
+    from indexer.service import IndexService
+    from indexer.store import QdrantStore
+
+    settings = Settings(workspace_root=str(tmp_path), data_dir=str(tmp_path / "data"))
+    registry = IndexerConfig(
+        repos=[RepoConfig(id="r", path=str(sample_repo), primary_branch="main")]
+    )
+    store = QdrantStore(location=":memory:")
+    ctx = IndexerContext(settings, registry, store=store, embedder=FakeProvider(dim=16))
+    service = IndexService(
+        settings, registry, store=store, embedder=FakeProvider(dim=16),
+        state=InMemoryStateStore(), lock=InMemoryLock(),
+    )
+
+    def boom(repo_id, **kw):
+        raise GitError(
+            "git clone ... failed: fatal: could not read Username for 'https://github.com'"
+        )
+
+    service.index_repo = boom  # type: ignore[method-assign]
+    c = TestClient(create_app(ctx, service))
+
+    resp = c.post("/reindex", json={"repo": "r"})
+    assert resp.status_code == 502
+    body = resp.json()
+    assert body["repo"] == "r"
+    assert "git token" in body["error"] or "sign in" in body["error"]
+
+
 def test_domain_docs_endpoint(client, tmp_path):
     from indexer.docs import save_domain_docs
 

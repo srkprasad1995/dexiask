@@ -6,60 +6,72 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/dexiask/dexiask/internal/auth"
 	"github.com/dexiask/dexiask/internal/handler"
 	"github.com/dexiask/dexiask/internal/pkg/logger"
 )
 
-func TestIndexerHandler_InjectsGitTokenAndWorkspace(t *testing.T) {
-	var gotToken, gotWorkspace string
+func adminCtx() context.Context {
+	return auth.WithUser(context.Background(), auth.Principal{UserID: "42", Login: "admin", Role: "admin"})
+}
+
+func memberCtx() context.Context {
+	return auth.WithUser(context.Background(), auth.Principal{UserID: "7", Login: "member", Role: "member"})
+}
+
+func TestIndexerHandler_GetInjectsWorkspace(t *testing.T) {
+	var gotWorkspace string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotToken = r.Header.Get("X-Git-Token")
 		gotWorkspace = r.Header.Get("X-Workspace-Id")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer upstream.Close()
 
-	h := handler.NewIndexerHandler(upstream.URL, auth.NewGitHubClient(0), logger.NewNop())
-	req := httptest.NewRequest(http.MethodPost, "/v1/indexer/v1/index/r", strings.NewReader(`{}`)).
-		WithContext(auth.WithUser(context.Background(), auth.Principal{UserID: "42", GitHubToken: "gho_tok"}))
+	h := handler.NewIndexerHandler(upstream.URL, logger.NewNop())
+	// A member may read (GET).
+	req := httptest.NewRequest(http.MethodGet, "/v1/indexer/v1/repos", nil).WithContext(memberCtx())
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d", rec.Code)
-	}
-	if gotToken != "gho_tok" {
-		t.Fatalf("X-Git-Token = %q, want gho_tok", gotToken)
-	}
-	if gotWorkspace == "" {
-		t.Fatalf("X-Workspace-Id must be injected")
+	if rec.Code != http.StatusOK || gotWorkspace == "" {
+		t.Fatalf("status=%d workspace=%q", rec.Code, gotWorkspace)
 	}
 }
 
-func TestIndexerHandler_RepoAccessDenied(t *testing.T) {
-	// GitHub API stub: the user cannot see octocat/secret.
-	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer gh.Close()
-
-	// Upstream must never be reached.
+func TestIndexerHandler_MutationRequiresAdmin(t *testing.T) {
+	// Upstream must never be reached for a non-admin mutation.
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatal("upstream must not be called when access is denied")
+		t.Fatal("upstream must not be called for a member mutation")
 	}))
 	defer upstream.Close()
 
-	h := handler.NewIndexerHandler(upstream.URL, auth.NewGitHubClientWithBase(gh.URL, time.Minute), logger.NewNop())
-	req := httptest.NewRequest(http.MethodPost, "/v1/indexer/v1/repos",
-		strings.NewReader(`{"id":"r","url":"https://github.com/octocat/secret.git"}`)).
-		WithContext(auth.WithUser(context.Background(), auth.Principal{UserID: "42", GitHubToken: "gho_tok"}))
+	h := handler.NewIndexerHandler(upstream.URL, logger.NewNop())
+	req := httptest.NewRequest(http.MethodPost, "/v1/indexer/reindex", strings.NewReader(`{"repo":"r"}`)).
+		WithContext(memberCtx())
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", rec.Code)
+		t.Fatalf("expected 403 for member reindex, got %d", rec.Code)
+	}
+}
+
+func TestIndexerHandler_AdminMutationProxied(t *testing.T) {
+	var gotPath string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	h := handler.NewIndexerHandler(upstream.URL, logger.NewNop())
+	req := httptest.NewRequest(http.MethodPost, "/v1/indexer/reindex", strings.NewReader(`{"repo":"r"}`)).
+		WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || gotPath != "/reindex" {
+		t.Fatalf("status=%d path=%q", rec.Code, gotPath)
 	}
 }

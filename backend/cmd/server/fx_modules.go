@@ -77,6 +77,7 @@ var RepositoryModule = fx.Options(
 	fx.Provide(repository.NewMCPServerRepository),
 	fx.Provide(repository.NewUserRepository),
 	fx.Provide(repository.NewSessionRepository),
+	fx.Provide(repository.NewInviteRepository),
 )
 
 // AuthModule provides GitHub OAuth, sessions, and the request-auth middleware.
@@ -102,14 +103,14 @@ var AuthModule = fx.Options(
 		return auth.NewCookieSigner(cfg.SessionSecret, strings.HasPrefix(cfg.OAuthCallbackURL, "https://")), nil
 	}),
 	fx.Provide(func(cfg *config.Config) *auth.OAuth {
-		if !cfg.RequireAuth {
+		if !cfg.OAuthEnabled {
 			return nil
 		}
 		return auth.NewOAuth(cfg.GitHubClientID, cfg.GitHubClientSecret, cfg.OAuthCallbackURL)
 	}),
 	fx.Provide(func() *auth.GitHubClient { return auth.NewGitHubClient(5 * time.Minute) }),
-	fx.Provide(func(o *auth.OAuth, gh *auth.GitHubClient, c *auth.TokenCipher, ur repository.UserRepository, sr repository.SessionRepository, log *logger.Logger) service.AuthService {
-		return service.NewAuthService(o, gh, c, ur, sr, log)
+	fx.Provide(func(o *auth.OAuth, gh *auth.GitHubClient, c *auth.TokenCipher, ur repository.UserRepository, sr repository.SessionRepository, ir repository.InviteRepository, log *logger.Logger) service.AuthService {
+		return service.NewAuthService(o, gh, c, ur, sr, ir, log)
 	}),
 	fx.Provide(func(cfg *config.Config, s *auth.CookieSigner, c *auth.TokenCipher, sr repository.SessionRepository, ur repository.UserRepository, log *logger.Logger) *auth.Authenticator {
 		return auth.NewAuthenticator(cfg.RequireAuth, config.FixedUserID, s, c, sr, ur, log)
@@ -146,16 +147,16 @@ var HandlerModule = fx.Options(
 	fx.Provide(handler.NewChatHandler),
 	fx.Provide(handler.NewConversationHandler),
 	fx.Provide(handler.NewAttachmentHandler),
-	fx.Provide(func(cfg *config.Config, gh *auth.GitHubClient, log *logger.Logger) *handler.IndexerHandler {
-		return handler.NewIndexerHandler(cfg.IndexerURL, gh, log)
+	fx.Provide(func(cfg *config.Config, log *logger.Logger) *handler.IndexerHandler {
+		return handler.NewIndexerHandler(cfg.IndexerURL, log)
 	}),
 	fx.Provide(func(cfg *config.Config, log *logger.Logger) *handler.MemoryHandler {
 		return handler.NewMemoryHandler(cfg.MemoryURL, log)
 	}),
 	fx.Provide(handler.NewMCPServerHandler),
 	fx.Provide(func(cfg *config.Config, svc service.AuthService, signer *auth.CookieSigner, log *logger.Logger) *handler.AuthHandler {
-		secure := strings.HasPrefix(cfg.OAuthCallbackURL, "https://")
-		return handler.NewAuthHandler(svc, signer, cfg.WebBaseURL, cfg.RequireAuth, secure, config.FixedUserID, log)
+		secure := strings.HasPrefix(cfg.WebBaseURL, "https://")
+		return handler.NewAuthHandler(svc, signer, cfg.WebBaseURL, cfg.RequireAuth, cfg.OAuthEnabled, secure, config.FixedUserID, log)
 	}),
 	fx.Provide(func(c *handler.ChatHandler, cv *handler.ConversationHandler, a *handler.AttachmentHandler, i *handler.IndexerHandler, mem *handler.MemoryHandler, m *handler.MCPServerHandler, au *handler.AuthHandler) server.Handlers {
 		return server.Handlers{Chat: c, Conversation: cv, Attachment: a, Indexer: i, Memory: mem, MCPServer: m, Auth: au}

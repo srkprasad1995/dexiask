@@ -11,6 +11,7 @@ import {
   useWorkingMemory,
   type MemoryScope,
 } from "@/lib/api/memory";
+import { useIsAdmin } from "@/lib/auth/use-user";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -86,6 +87,7 @@ function ScopeDetail({ scope }: { scope: MemoryScope }) {
 export function MemoryView() {
   const { data: scopes, isLoading, isError } = useMemoryScopes();
   const consolidate = useConsolidate();
+  const isAdmin = useIsAdmin();
   const [selected, setSelected] = useState<string>("");
 
   const scopeList = scopes ?? [];
@@ -110,18 +112,20 @@ export function MemoryView() {
               judge consolidates observations into durable memory.
             </p>
           </div>
-          <Button
-            onClick={runConsolidation}
-            disabled={consolidate.isPending}
-            className="shrink-0 gap-1.5"
-          >
-            {consolidate.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-            Consolidate now
-          </Button>
+          {isAdmin && (
+            <Button
+              onClick={runConsolidation}
+              disabled={consolidate.isPending}
+              className="shrink-0 gap-1.5"
+            >
+              {consolidate.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              Consolidate now
+            </Button>
+          )}
         </header>
 
         {isError && (

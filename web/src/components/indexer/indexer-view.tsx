@@ -27,6 +27,7 @@ import {
   type Repo,
   type SearchResult,
 } from "@/lib/api/indexer";
+import { useIsAdmin } from "@/lib/auth/use-user";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -119,8 +120,8 @@ function AddRepoForm() {
   );
 }
 
-/** One repo row: label, index status, and a per-repo reindex button. */
-function RepoRow({ repo }: { repo: Repo }) {
+/** One repo row: label, index status, and (for admins) a per-repo reindex button. */
+function RepoRow({ repo, admin }: { repo: Repo; admin: boolean }) {
   const reindex = useReindex();
   const isPath = !repo.url;
   const Icon = isPath ? Folder : GitBranch;
@@ -140,32 +141,34 @@ function RepoRow({ repo }: { repo: Repo }) {
       <Badge variant={statusVariant(repo.status)}>
         {repo.status ?? (repo.indexed ? "indexed" : "not indexed")}
       </Badge>
-      <Button
-        variant="outline"
-        size="sm"
-        className="gap-1.5"
-        disabled={reindex.isPending}
-        onClick={() =>
-          reindex.mutate(
-            { repo: repo.id },
-            {
-              onSuccess: () => toast.success(`Reindexing ${repo.id}`),
-              onError: (err) => toast.error(err.message || "Reindex failed"),
-            },
-          )
-        }
-      >
-        <RefreshCw
-          className={cn("h-3.5 w-3.5", reindex.isPending && "animate-spin")}
-        />
-        Reindex
-      </Button>
+      {admin && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          disabled={reindex.isPending}
+          onClick={() =>
+            reindex.mutate(
+              { repo: repo.id },
+              {
+                onSuccess: () => toast.success(`Reindexing ${repo.id}`),
+                onError: (err) => toast.error(err.message || "Reindex failed"),
+              },
+            )
+          }
+        >
+          <RefreshCw
+            className={cn("h-3.5 w-3.5", reindex.isPending && "animate-spin")}
+          />
+          Reindex
+        </Button>
+      )}
     </div>
   );
 }
 
 /** The list of registered repos (with loading + empty states). */
-function RepoList() {
+function RepoList({ admin }: { admin: boolean }) {
   const { data, isLoading, isError, error } = useRepos();
   const reindexAll = useReindex();
   const repos = data?.repos ?? [];
@@ -177,7 +180,7 @@ function RepoList() {
           <Database className="h-4 w-4 text-muted-foreground" />
           Indexed repositories
         </h2>
-        {repos.length > 0 && (
+        {admin && repos.length > 0 && (
           <Button
             variant="ghost"
             size="sm"
@@ -221,7 +224,7 @@ function RepoList() {
       ) : (
         <div className="space-y-2">
           {repos.map((repo) => (
-            <RepoRow key={repo.id} repo={repo} />
+            <RepoRow key={repo.id} repo={repo} admin={admin} />
           ))}
         </div>
       )}
@@ -487,6 +490,7 @@ function GitTokenPanel() {
 }
 
 export function IndexerView() {
+  const isAdmin = useIsAdmin();
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8">
@@ -498,14 +502,15 @@ export function IndexerView() {
             <StatusLine />
           </div>
           <p className="text-sm text-muted-foreground">
-            Register repositories, keep the semantic index fresh, and search your
-            codebase by meaning.
+            Search your codebase by meaning.
+            {isAdmin && " Register repositories and keep the index fresh."}
           </p>
         </header>
 
-        <AddRepoForm />
-        <RepoList />
-        <GitTokenPanel />
+        {/* Repo registration + the central git token are admin-only. */}
+        {isAdmin && <AddRepoForm />}
+        <RepoList admin={isAdmin} />
+        {isAdmin && <GitTokenPanel />}
         <SearchPanel />
         <DomainDocsPanel />
       </div>

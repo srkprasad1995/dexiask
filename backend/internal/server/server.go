@@ -43,6 +43,10 @@ func NewServer(cfg *config.Config, h Handlers, authn *auth.Authenticator, db *go
 	app.Handle("/v1/indexer/", h.Indexer)
 	app.Handle("/v1/memory/", h.Memory)
 	app.HandleFunc("/v1/auth/me", h.Auth.Me)
+	// Admin: invites + users (the handlers enforce the admin role).
+	app.HandleFunc("/v1/invites", h.Auth.Invites)
+	app.HandleFunc("/v1/invites/", h.Auth.DeleteInvite)
+	app.HandleFunc("/v1/users", h.Auth.Users)
 	protected := authn.Middleware(app)
 
 	// Root mux — health + unauthenticated auth endpoints + the protected app.
@@ -55,8 +59,10 @@ func NewServer(cfg *config.Config, h Handlers, authn *auth.Authenticator, db *go
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+	mux.HandleFunc("/v1/auth/config", h.Auth.Config)
 	mux.HandleFunc("/v1/auth/login", h.Auth.Login)
 	mux.HandleFunc("/v1/auth/callback", h.Auth.Callback)
+	mux.HandleFunc("/v1/auth/token-login", h.Auth.TokenLogin)
 	mux.HandleFunc("/v1/auth/logout", h.Auth.Logout)
 	mux.Handle("/", protected)
 

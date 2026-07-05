@@ -58,18 +58,30 @@ uploaded attachments under `.dexiask/`), the engine (rw — the agent's cwd), an
 indexer (ro — source for its git mirrors). This shared filesystem is the one coupling to
 preserve: the backend writes an attachment and the engine reads it back at the same path.
 
-### Auth — GitHub OAuth (`backend/internal/auth`)
-Auth lives entirely in the backend. `auth.Authenticator.Middleware` wraps the protected
-routes: it verifies the signed session cookie → loads the session + user → decrypts the
-user's GitHub OAuth token → injects a `Principal{UserID, Login, GitHubToken}` into the
-request context. Handlers read it via `requirePrincipal` and stamp `p.UserID`; **there is
-no `config.FixedUserID` on the hot paths** except the dev-fallback principal. `RequireAuth`
-is true only when a GitHub OAuth app is configured (`DEXIASK_GITHUB_CLIENT_ID/SECRET`);
-otherwise the middleware injects the fixed dev user. `/v1/auth/{login,callback,logout}` are
-unauthenticated; `/v1/auth/me` and everything else are gated. The web flow (`/login`,
-`/api/auth/*` BFF that relays redirects + `Set-Cookie`, `middleware.ts` login gate) is
-same-origin so the session cookie lands on the web origin. OAuth tokens are AES-GCM
-encrypted at rest (`DEXIASK_TOKEN_ENC_KEY`).
+### Auth + roles (`backend/internal/auth`)
+Auth lives entirely in the backend. `auth.Authenticator.Middleware` verifies the signed
+session cookie → loads session + user → decrypts the user's GitHub token → injects a
+`Principal{UserID, Login, Role, GitHubToken}`. Handlers read it via `requirePrincipal` /
+`requireAdmin` and stamp `p.UserID`; **no `config.FixedUserID` on the hot paths** except the
+dev-fallback principal.
+- **Login methods**: primary is **token login** (`POST /v1/auth/token-login` with a GitHub
+  PAT — validated via the GitHub API, stored AES-GCM encrypted). GitHub **OAuth** is
+  optional on top (`/v1/auth/login|callback`, enabled when `DEXIASK_GITHUB_CLIENT_ID/SECRET`
+  are set). `RequireAuth` is true when the session infra (`DEXIASK_SESSION_SECRET` +
+  `DEXIASK_TOKEN_ENC_KEY`) is configured **or** OAuth is; otherwise the middleware injects
+  the fixed dev **admin** user (zero-config).
+- **Roles**: `admin` / `member` (`model.User.Role`). The **first** user to sign in bootstraps
+  as admin; everyone else must hold an admin-created **invite** (`model.Invite`, keyed by
+  GitHub login, consumed on first login) or login is refused (403). Admin-only surface,
+  gated by `requireAdmin`: `/v1/mcp-servers/*`, indexer **mutations** (reindex/register/
+  git-token — reads are open to members), memory **mutations** (`/v1/memory/consolidate` +
+  entry edits), and `/v1/invites` + `/v1/users`. `GET /v1/auth/config` advertises which
+  login methods are enabled.
+- **MCP servers are workspace-wide** (admin-managed, injected into every user's turn) — not
+  per-user. **Indexing uses one central git token** set by an admin (the indexer's global
+  token via `PUT /v1/indexer/v1/git-token`); the backend no longer injects per-user tokens.
+- Web: `/login` (token form + optional OAuth button, driven by `/api/auth/config`), the
+  `/admin` Team page (invites + roster), and admin-only nav/actions gated by `useIsAdmin`.
 
 ### Indexer wiring
 The backend reverse-proxies `/v1/indexer/*` to the indexer's REST control plane
@@ -77,10 +89,11 @@ The backend reverse-proxies `/v1/indexer/*` to the indexer's REST control plane
 into every ask Job's `mcpServers[]`, so the agent can call `semantic_search`.
 
 The indexer proxy is transparent (any method+body), so new indexer endpoints work without
-backend changes. **Per-user git token**: on mutating indexer ops the backend validates the
-caller's GitHub repo access (`auth.GitHubClient.HasRepoAccess`) and injects their OAuth
-token as `X-Git-Token`; the indexer prefers it over the global `settings.git_token` when
-cloning private repos. **Domain docs**: when `DEXIASK_ENABLE_DOMAIN_DOCS` is set, each index
+backend changes; mutating ops are **admin-only** (see Auth). **Central git token**: indexing
+uses one shared token an admin sets via `PUT /v1/indexer/v1/git-token` (the indexer's global
+`settings.git_token`, persisted `0600`, never returned to the browser). Repos are indexed
+once and shared across all members of the single workspace — there is no per-user
+repo-access gating at search time. **Domain docs**: when `DEXIASK_ENABLE_DOMAIN_DOCS` is set, each index
 pass has an LLM generate architecture/module/concept docs, embedded into Qdrant with
 `content_type="doc"` so `semantic_search` returns them alongside code (the `code_only`
 filter never drops docs); browsable via `GET /v1/indexer/v1/docs/{repo}` and the web

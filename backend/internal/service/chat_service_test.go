@@ -233,10 +233,7 @@ func TestChatService_InjectsEnabledCustomMCPServers(t *testing.T) {
 	if gotFilter == nil || !gotFilter.EnabledOnly {
 		t.Fatalf("expected EnabledOnly filter, got %+v", gotFilter)
 	}
-	// Both the conversation and the MCP lookup must be scoped to the caller.
-	if gotFilter.UserID != "42" {
-		t.Fatalf("mcp filter user = %q, want 42", gotFilter.UserID)
-	}
+	// The conversation is scoped to the caller (MCP servers are workspace-wide).
 	if gotCreate == nil || gotCreate.UserID != "42" {
 		t.Fatalf("conversation created with user %v, want 42", gotCreate)
 	}

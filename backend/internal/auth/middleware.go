@@ -49,7 +49,8 @@ func NewAuthenticator(
 func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !a.require {
-			r = r.WithContext(WithUser(r.Context(), Principal{UserID: a.devUserID, Login: a.devUserID}))
+			// Dev-fallback: the single local user is an admin so it can do everything.
+			r = r.WithContext(WithUser(r.Context(), Principal{UserID: a.devUserID, Login: a.devUserID, Role: "admin"}))
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -85,5 +86,5 @@ func (a *Authenticator) resolve(r *http.Request) (Principal, bool) {
 		a.logger.Error("failed to decrypt user token", zap.Error(err), zap.String("user_id", user.ID))
 		return Principal{}, false
 	}
-	return Principal{UserID: user.ID, Login: user.Login, GitHubToken: token}, true
+	return Principal{UserID: user.ID, Login: user.Login, Role: user.Role, GitHubToken: token}, true
 }

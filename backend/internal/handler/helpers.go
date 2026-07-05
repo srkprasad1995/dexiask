@@ -20,6 +20,19 @@ func requirePrincipal(w http.ResponseWriter, r *http.Request) (auth.Principal, b
 	return p, true
 }
 
+// requireAdmin is requirePrincipal plus an admin-role check. Non-admins get 403.
+func requireAdmin(w http.ResponseWriter, r *http.Request) (auth.Principal, bool) {
+	p, ok := requirePrincipal(w, r)
+	if !ok {
+		return auth.Principal{}, false
+	}
+	if !p.IsAdmin() {
+		writeError(w, http.StatusForbidden, "admin only")
+		return auth.Principal{}, false
+	}
+	return p, true
+}
+
 // writeJSON writes v as a JSON response with the given status.
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")

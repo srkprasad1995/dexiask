@@ -68,13 +68,13 @@ func (h *MCPServerHandler) ServeItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MCPServerHandler) list(w http.ResponseWriter, r *http.Request) {
-	p, ok := requirePrincipal(w, r)
-	if !ok {
+	// MCP servers are admin-managed (they carry auth secrets and are injected into
+	// every user's turn).
+	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
 	servers, err := h.repo.List(r.Context(), &model.ListMCPServersFilter{
 		WorkspaceID: config.FixedWorkspaceID,
-		UserID:      p.UserID,
 	})
 	if err != nil {
 		h.logger.Error("list mcp servers failed", zap.Error(err))
@@ -88,7 +88,7 @@ func (h *MCPServerHandler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MCPServerHandler) create(w http.ResponseWriter, r *http.Request) {
-	p, ok := requirePrincipal(w, r)
+	p, ok := requireAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -126,28 +126,8 @@ func (h *MCPServerHandler) create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, srv)
 }
 
-// ownsServer verifies the principal owns the server before mutating it, so one
-// user cannot read/modify another user's server (its Headers may hold secrets).
-func (h *MCPServerHandler) ownsServer(w http.ResponseWriter, r *http.Request, id string) bool {
-	p, ok := requirePrincipal(w, r)
-	if !ok {
-		return false
-	}
-	srv, err := h.repo.GetByID(r.Context(), id)
-	if err != nil {
-		writeServiceError(w, err)
-		return false
-	}
-	if srv.UserID != p.UserID {
-		// Do not leak existence of another user's server.
-		writeError(w, http.StatusNotFound, "mcp server not found")
-		return false
-	}
-	return true
-}
-
 func (h *MCPServerHandler) update(w http.ResponseWriter, r *http.Request, id string) {
-	if !h.ownsServer(w, r, id) {
+	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
 	var body mcpServerBody
@@ -182,7 +162,7 @@ func (h *MCPServerHandler) update(w http.ResponseWriter, r *http.Request, id str
 }
 
 func (h *MCPServerHandler) delete(w http.ResponseWriter, r *http.Request, id string) {
-	if !h.ownsServer(w, r, id) {
+	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
 	if err := h.repo.Delete(r.Context(), id); err != nil {

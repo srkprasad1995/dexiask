@@ -28,6 +28,7 @@ from .config.models import IndexerConfig, RepoConfig
 from .config.registry import load_registry_file, merge_repo
 from .context import IndexerContext, RepoNotFoundError
 from .embedding import build_provider
+from .git.repo import GitError
 from .lock import InMemoryLock
 from .mcp.server import build_session_manager
 from .pipeline import InMemoryStateStore
@@ -173,6 +174,21 @@ def create_app(
                 results.append(await asyncio.to_thread(service.index_repo, rid, **kw))
             except RepoNotFoundError:
                 return JSONResponse({"error": f"unknown repo {rid!r}"}, status_code=404)
+            except GitError as e:
+                # Clone/fetch failed — almost always a missing/invalid git token for
+                # a private repo, or an unreachable remote. Surface it cleanly (with
+                # a hint) instead of a 500 so the UI can show something actionable.
+                msg = str(e)
+                hint = (
+                    "could not access the repository — for a private repo, set a git "
+                    "token (Indexer → Git access token) or sign in with GitHub."
+                    if "could not read Username" in msg or "Authentication failed" in msg
+                    else "git operation failed."
+                )
+                return JSONResponse(
+                    {"error": f"failed to index {rid!r}: {hint}", "detail": msg, "repo": rid},
+                    status_code=502,
+                )
         return JSONResponse({"results": results})
 
     def _effective_token(request: Request, body: dict[str, Any]) -> str | None:

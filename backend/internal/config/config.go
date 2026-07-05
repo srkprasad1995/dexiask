@@ -68,8 +68,12 @@ type Config struct {
 	// WebBaseURL is the web app origin the callback redirects the browser back
 	// to after login (e.g. http://localhost:25051).
 	WebBaseURL string
-	// RequireAuth is true when a GitHub OAuth app is configured. When false the
-	// backend injects the fixed dev-fallback principal on every request.
+	// OAuthEnabled is true when a GitHub OAuth app is configured (adds the
+	// authorize/callback login flow on top of token-login).
+	OAuthEnabled bool
+	// RequireAuth is true when login is enabled: either an OAuth app is configured
+	// or the session infra (SessionSecret + TokenEncKey) is set for token-login.
+	// When false the backend injects the fixed dev-fallback principal.
 	RequireAuth bool
 }
 
@@ -89,6 +93,12 @@ func Load() *Config {
 	}
 	githubClientID := os.Getenv("DEXIASK_GITHUB_CLIENT_ID")
 	githubClientSecret := os.Getenv("DEXIASK_GITHUB_CLIENT_SECRET")
+	sessionSecret := os.Getenv("DEXIASK_SESSION_SECRET")
+	tokenEncKey := os.Getenv("DEXIASK_TOKEN_ENC_KEY")
+	oauthEnabled := githubClientID != "" && githubClientSecret != ""
+	// Login is enabled when the session infra is present (token-login) or an OAuth
+	// app is configured. Both paths need the session secret + token-encryption key.
+	requireAuth := oauthEnabled || (sessionSecret != "" && tokenEncKey != "")
 
 	return &Config{
 		DBDSN:          os.Getenv("DEXIASK_DB_DSN"),
@@ -109,12 +119,11 @@ func Load() *Config {
 		GitHubClientID:     githubClientID,
 		GitHubClientSecret: githubClientSecret,
 		OAuthCallbackURL:   os.Getenv("DEXIASK_OAUTH_CALLBACK_URL"),
-		SessionSecret:      os.Getenv("DEXIASK_SESSION_SECRET"),
-		TokenEncKey:        os.Getenv("DEXIASK_TOKEN_ENC_KEY"),
+		SessionSecret:      sessionSecret,
+		TokenEncKey:        tokenEncKey,
 		WebBaseURL:         getEnv("DEXIASK_WEB_BASE_URL", "http://localhost:25051"),
-		// Auth is enforced only when a GitHub OAuth app is configured; otherwise
-		// the backend runs in dev-fallback mode (single dev user, no login).
-		RequireAuth: githubClientID != "" && githubClientSecret != "",
+		OAuthEnabled:       oauthEnabled,
+		RequireAuth:        requireAuth,
 	}
 }
 

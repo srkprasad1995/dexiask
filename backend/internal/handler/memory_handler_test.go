@@ -48,14 +48,31 @@ func TestMemoryHandler_ConsolidateMapping(t *testing.T) {
 	defer upstream.Close()
 
 	h := handler.NewMemoryHandler(upstream.URL, logger.NewNop())
+	// Consolidation is a mutation → admin only.
 	req := httptest.NewRequest(http.MethodPost, "/v1/memory/consolidate", strings.NewReader(`{}`)).
-		WithContext(auth.WithUser(context.Background(), auth.Principal{UserID: "42"}))
+		WithContext(auth.WithUser(context.Background(), auth.Principal{UserID: "42", Role: "admin"}))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
 	// /v1/memory/consolidate maps to the service's /v1/consolidate.
 	if gotPath != "/v1/consolidate" {
 		t.Fatalf("consolidate mapped to %q, want /v1/consolidate", gotPath)
+	}
+}
+
+func TestMemoryHandler_ConsolidateForbiddenForMember(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("upstream must not be called for a member mutation")
+	}))
+	defer upstream.Close()
+
+	h := handler.NewMemoryHandler(upstream.URL, logger.NewNop())
+	req := httptest.NewRequest(http.MethodPost, "/v1/memory/consolidate", strings.NewReader(`{}`)).
+		WithContext(auth.WithUser(context.Background(), auth.Principal{UserID: "7", Role: "member"}))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for member consolidate, got %d", rec.Code)
 	}
 }
 

@@ -336,7 +336,6 @@ func (s *chatService) resolveMCPServers(ctx context.Context, userID string) []ag
 	}
 	custom, err := s.mcpRepo.List(ctx, &model.ListMCPServersFilter{
 		WorkspaceID: config.FixedWorkspaceID,
-		UserID:      userID,
 		EnabledOnly: true,
 	})
 	if err != nil {

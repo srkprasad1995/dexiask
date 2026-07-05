@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/dexiask/dexiask/internal/auth"
 	"github.com/dexiask/dexiask/internal/config"
 	"github.com/dexiask/dexiask/internal/pkg/logger"
 	"go.uber.org/zap"
@@ -37,7 +38,15 @@ func (h *MemoryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "memory service not configured")
 		return
 	}
-	p, ok := requirePrincipal(w, r)
+	// Members can browse memory (GET); mutations — entry edits, consolidation —
+	// are admin-only.
+	var p auth.Principal
+	var ok bool
+	if r.Method == http.MethodGet {
+		p, ok = requirePrincipal(w, r)
+	} else {
+		p, ok = requireAdmin(w, r)
+	}
 	if !ok {
 		return
 	}

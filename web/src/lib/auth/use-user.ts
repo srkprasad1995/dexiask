@@ -8,6 +8,7 @@ export type Me = {
   login: string;
   name: string;
   avatar_url?: string;
+  role?: string;
 };
 
 type UserState = {
@@ -39,4 +40,10 @@ export function useUser(): UserState {
   }, []);
 
   return state;
+}
+
+/** Convenience: whether the current user is an admin (false while loading). */
+export function useIsAdmin(): boolean {
+  const { user } = useUser();
+  return user?.role === "admin";
 }

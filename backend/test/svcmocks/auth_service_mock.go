@@ -57,6 +57,65 @@ func (mr *MockAuthServiceMockRecorder) Complete(ctx, code any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Complete", reflect.TypeOf((*MockAuthService)(nil).Complete), ctx, code)
 }
 
+// CreateInvite mocks base method.
+func (m *MockAuthService) CreateInvite(ctx context.Context, login, createdBy string) (*model.Invite, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateInvite", ctx, login, createdBy)
+	ret0, _ := ret[0].(*model.Invite)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateInvite indicates an expected call of CreateInvite.
+func (mr *MockAuthServiceMockRecorder) CreateInvite(ctx, login, createdBy any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateInvite", reflect.TypeOf((*MockAuthService)(nil).CreateInvite), ctx, login, createdBy)
+}
+
+// DeleteInvite mocks base method.
+func (m *MockAuthService) DeleteInvite(ctx context.Context, login string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteInvite", ctx, login)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteInvite indicates an expected call of DeleteInvite.
+func (mr *MockAuthServiceMockRecorder) DeleteInvite(ctx, login any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteInvite", reflect.TypeOf((*MockAuthService)(nil).DeleteInvite), ctx, login)
+}
+
+// ListInvites mocks base method.
+func (m *MockAuthService) ListInvites(ctx context.Context) ([]*model.Invite, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListInvites", ctx)
+	ret0, _ := ret[0].([]*model.Invite)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListInvites indicates an expected call of ListInvites.
+func (mr *MockAuthServiceMockRecorder) ListInvites(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListInvites", reflect.TypeOf((*MockAuthService)(nil).ListInvites), ctx)
+}
+
+// ListUsers mocks base method.
+func (m *MockAuthService) ListUsers(ctx context.Context) ([]*model.User, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListUsers", ctx)
+	ret0, _ := ret[0].([]*model.User)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListUsers indicates an expected call of ListUsers.
+func (mr *MockAuthServiceMockRecorder) ListUsers(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUsers", reflect.TypeOf((*MockAuthService)(nil).ListUsers), ctx)
+}
+
 // LoginURL mocks base method.
 func (m *MockAuthService) LoginURL(state string) string {
 	m.ctrl.T.Helper()
@@ -98,4 +157,20 @@ func (m *MockAuthService) Me(ctx context.Context, userID string) (*model.User, e
 func (mr *MockAuthServiceMockRecorder) Me(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Me", reflect.TypeOf((*MockAuthService)(nil).Me), ctx, userID)
+}
+
+// TokenLogin mocks base method.
+func (m *MockAuthService) TokenLogin(ctx context.Context, token string) (string, *model.User, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TokenLogin", ctx, token)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(*model.User)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// TokenLogin indicates an expected call of TokenLogin.
+func (mr *MockAuthServiceMockRecorder) TokenLogin(ctx, token any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TokenLogin", reflect.TypeOf((*MockAuthService)(nil).TokenLogin), ctx, token)
 }

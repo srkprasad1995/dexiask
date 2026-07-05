@@ -12,10 +12,11 @@ import (
 type ErrorCode string
 
 const (
-	CodeInternal        ErrorCode = "INTERNAL_ERROR"
-	CodeNotFound        ErrorCode = "NOT_FOUND"
-	CodeInvalidArgument ErrorCode = "INVALID_ARGUMENT"
-	CodeUnavailable     ErrorCode = "UNAVAILABLE"
+	CodeInternal         ErrorCode = "INTERNAL_ERROR"
+	CodeNotFound         ErrorCode = "NOT_FOUND"
+	CodeInvalidArgument  ErrorCode = "INVALID_ARGUMENT"
+	CodeUnavailable      ErrorCode = "UNAVAILABLE"
+	CodePermissionDenied ErrorCode = "PERMISSION_DENIED"
 )
 
 // AppError represents an application error with a classification code.
@@ -50,6 +51,15 @@ func Internal(message string, err error) *AppError { return newAppError(CodeInte
 func Unavailable(message string, err error) *AppError {
 	return newAppError(CodeUnavailable, message, err)
 }
+func PermissionDenied(message string) *AppError {
+	return newAppError(CodePermissionDenied, message, nil)
+}
+
+// IsNotFound reports whether err is a not-found application error.
+func IsNotFound(err error) bool {
+	var appErr *AppError
+	return errors.As(err, &appErr) && appErr.Code == CodeNotFound
+}
 
 // HTTPStatus maps an error to an HTTP status code, defaulting to 500.
 func HTTPStatus(err error) int {
@@ -64,6 +74,8 @@ func HTTPStatus(err error) int {
 		return http.StatusBadRequest
 	case CodeUnavailable:
 		return http.StatusServiceUnavailable
+	case CodePermissionDenied:
+		return http.StatusForbidden
 	default:
 		return http.StatusInternalServerError
 	}

@@ -20,10 +20,15 @@ import (
 
 const testUserID = "u1"
 
-// withPrincipal returns req carrying an authenticated principal, as the auth
-// middleware would inject.
+// withPrincipal returns req carrying an authenticated admin principal, as the
+// auth middleware would inject. MCP-server management is admin-only.
 func withPrincipal(req *http.Request) *http.Request {
-	return req.WithContext(auth.WithUser(req.Context(), auth.Principal{UserID: testUserID, Login: "octocat"}))
+	return req.WithContext(auth.WithUser(req.Context(), auth.Principal{UserID: testUserID, Login: "octocat", Role: "admin"}))
+}
+
+// withMember returns req carrying a non-admin member principal.
+func withMember(req *http.Request) *http.Request {
+	return req.WithContext(auth.WithUser(req.Context(), auth.Principal{UserID: "m1", Login: "member", Role: "member"}))
 }
 
 func newMCPHandler(t *testing.T) (*handler.MCPServerHandler, *mocks.MockMCPServerRepository) {
@@ -37,8 +42,8 @@ func TestMCPServerHandler_List(t *testing.T) {
 	h, repo := newMCPHandler(t)
 	repo.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, f *model.ListMCPServersFilter) ([]*model.MCPServer, error) {
-			if f.UserID != testUserID {
-				t.Fatalf("list must be scoped to user, got %q", f.UserID)
+			if f.WorkspaceID == "" {
+				t.Fatalf("list must be workspace-scoped, got empty")
 			}
 			return []*model.MCPServer{{ID: "m1", Name: "github", Type: "http", URL: "http://gh/mcp", Enabled: true}}, nil
 		})
@@ -69,6 +74,16 @@ func TestMCPServerHandler_List_Unauthenticated(t *testing.T) {
 	h.ServeCollection(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 without principal, got %d", rec.Code)
+	}
+}
+
+func TestMCPServerHandler_MemberForbidden(t *testing.T) {
+	h, _ := newMCPHandler(t) // repo must NOT be called for a non-admin
+	req := withMember(httptest.NewRequest(http.MethodGet, "/v1/mcp-servers", nil))
+	rec := httptest.NewRecorder()
+	h.ServeCollection(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for member, got %d", rec.Code)
 	}
 }
 
@@ -112,8 +127,6 @@ func TestMCPServerHandler_Create_BadType(t *testing.T) {
 
 func TestMCPServerHandler_Update_EnabledToggle(t *testing.T) {
 	h, repo := newMCPHandler(t)
-	// Ownership check loads the server first.
-	repo.EXPECT().GetByID(gomock.Any(), "m1").Return(&model.MCPServer{ID: "m1", UserID: testUserID}, nil)
 	repo.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, in *model.UpdateMCPServerInput) (*model.MCPServer, error) {
 			if in.ID != "m1" || in.Enabled == nil || *in.Enabled {
@@ -131,23 +144,18 @@ func TestMCPServerHandler_Update_EnabledToggle(t *testing.T) {
 	}
 }
 
-func TestMCPServerHandler_Update_NotOwner(t *testing.T) {
-	h, repo := newMCPHandler(t)
-	// Server belongs to a different user — must 404, never call Update.
-	repo.EXPECT().GetByID(gomock.Any(), "m1").Return(&model.MCPServer{ID: "m1", UserID: "someone-else"}, nil)
-
-	req := withPrincipal(httptest.NewRequest(http.MethodPut, "/v1/mcp-servers/m1", strings.NewReader(`{"enabled":false}`)))
+func TestMCPServerHandler_Update_MemberForbidden(t *testing.T) {
+	h, _ := newMCPHandler(t) // repo must NOT be called for a non-admin
+	req := withMember(httptest.NewRequest(http.MethodPut, "/v1/mcp-servers/m1", strings.NewReader(`{"enabled":false}`)))
 	rec := httptest.NewRecorder()
 	h.ServeItem(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 for non-owner, got %d", rec.Code)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for member, got %d", rec.Code)
 	}
 }
 
 func TestMCPServerHandler_Delete(t *testing.T) {
 	h, repo := newMCPHandler(t)
-	repo.EXPECT().GetByID(gomock.Any(), "m1").Return(&model.MCPServer{ID: "m1", UserID: testUserID}, nil)
 	repo.EXPECT().Delete(gomock.Any(), "m1").Return(nil)
 
 	req := withPrincipal(httptest.NewRequest(http.MethodDelete, "/v1/mcp-servers/m1", nil))
