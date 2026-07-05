@@ -27,7 +27,7 @@ from fastapi.responses import JSONResponse
 from .config.models import IndexerConfig, RepoConfig
 from .config.registry import load_registry_file, merge_repo
 from .context import IndexerContext, RepoNotFoundError
-from .embedding import build_provider
+from .embedding import build_provider, resolve_provider
 from .git.repo import GitError
 from .lock import InMemoryLock
 from .mcp.server import build_session_manager
@@ -187,7 +187,19 @@ def create_app(
                 repos.append(entry)
             return repos
 
-        return {"status": "ready", "repos": await asyncio.to_thread(_collect)}
+        return {
+            "status": "ready",
+            # Semantic-search availability so the web UI can surface a "using
+            # lexical search" banner. Available only when both an embedder (needs
+            # an embeddings key or the local sidecar) and the vector store are
+            # wired. The provider is the *resolved* one — the default setting is
+            # "auto", which would tell the UI nothing.
+            "embeddings": {
+                "provider": resolve_provider(ctx.settings),
+                "available": ctx.embedder is not None and ctx.store is not None,
+            },
+            "repos": await asyncio.to_thread(_collect),
+        }
 
     async def _run_index(repo_id: str | None, **kw) -> JSONResponse:
         targets = [repo_id] if repo_id else [r.id for r in ctx.registry.repos]

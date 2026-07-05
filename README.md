@@ -109,15 +109,18 @@ indexes (read-only for the indexer).
 
 ## Quickstart
 
-**Prerequisites:** Docker + Docker Compose, an [Anthropic API key](https://console.anthropic.com/),
-and a [Voyage AI key](https://www.voyageai.com/) (for code embeddings) — or **no keys
-at all** with [local mode](#local-mode-no-api-keys) below.
+**Prerequisites:** Docker + Docker Compose and an [Anthropic API key](https://console.anthropic.com/)
+— or **no keys at all** with [local mode](#local-mode-no-api-keys) below.
+
+A [Voyage AI key](https://www.voyageai.com/) (or an OpenAI key) is **optional**: it powers
+**semantic** code search. Local mode serves embeddings from the sidecar instead; with neither,
+the agent still answers over fast **lexical** (keyword) search of the same indexed mirror.
 
 ```bash
 git clone <your-fork> dexiask && cd dexiask
 cp .env.example .env
-#  → edit .env: set ANTHROPIC_API_KEY and VOYAGE_API_KEY,
-#    and point DEXIASK_WORKSPACE_PATH at the repo you want to explore.
+#  → edit .env: set ANTHROPIC_API_KEY (VOYAGE_API_KEY is optional — for semantic
+#    search), and point DEXIASK_WORKSPACE_PATH at the repo you want to explore.
 make up          # or: docker compose up --build -d
 ```
 
@@ -174,8 +177,9 @@ The indexer indexes the **default branch** of any git repo under your mounted
 1. Set `DEXIASK_WORKSPACE_PATH` in `.env` to a directory containing the repo.
 2. Open the **Indexer** page in the UI → **Add repo** (git URL or a path under
    `/workspace`) → **Reindex**.
-3. Ask the agent a question about the code — it will call `semantic_search`
-   automatically (you'll see the tool card in the chat).
+3. Ask the agent a question about the code. With an embeddings key set it calls
+   `semantic_search` automatically (you'll see the tool card in the chat); without
+   one it falls back to `lexical_search` (keyword) over the same mirror.
 
 ### Private repos (central token) & per-user gating
 
@@ -261,7 +265,7 @@ Everything is env-driven — see `.env.example` for the full list. The essential
 |---|---|
 | `COMPOSE_PROFILES=local` | Enable the Ollama sidecar — run with **no API keys** (see [Local mode](#local-mode-no-api-keys)) |
 | `ANTHROPIC_API_KEY` | Claude engine credential (required unless local mode) |
-| `VOYAGE_API_KEY` | Indexer embedding credential (required unless local mode) |
+| `VOYAGE_API_KEY` | Embedding credential for **semantic** search (optional — `OPENAI_API_KEY` or local mode also work; with none, search is lexical only) |
 | `DEXIASK_LOCAL_TEXT_MODEL` / `_LOCAL_EMBED_MODEL` | Models baked into the local sidecar image (defaults `qwen2.5:1.5b` / `qwen3-embedding:0.6b`) |
 | `DEXIASK_MODEL` | Claude model for ask mode (default `claude-sonnet-5`) |
 | `DEXIASK_WORKSPACE_PATH` | Host codebase mounted at `/workspace` |

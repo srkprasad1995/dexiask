@@ -143,6 +143,21 @@ async def test_semantic_search_degrades_without_store(sample_repo, tmp_path):
     assert "unavailable" in json.loads(out)["error"]
 
 
+async def test_semantic_search_without_embedder_names_keys_and_fallback(sample_repo, tmp_path):
+    """No embeddings provider → the message names every way to configure one
+    (hosted keys AND the local sidecar) plus the lexical fallback, so the agent
+    doesn't dead-end on a bare 'unavailable' and instead switches to
+    lexical_search in the same turn."""
+    settings = Settings(workspace_root=str(tmp_path), data_dir=str(tmp_path / "d"))
+    registry = IndexerConfig(repos=[RepoConfig(id="r", path=str(sample_repo))])
+    ctx = IndexerContext(settings, registry)  # no embedder (no provider resolved)
+    out = await dispatch(ctx, "semantic_search", {"repo": "r", "query": "x", "format": "json"})
+    msg = json.loads(out)["error"].lower()
+    assert "voyage_api_key" in msg and "openai_api_key" in msg
+    assert "compose_profiles=local" in msg
+    assert "lexical_search" in msg
+
+
 async def test_unknown_tool(ctx):
     out = await dispatch(ctx, "nope", {"format": "json"})
     assert "unknown tool" in json.loads(out)["error"]
