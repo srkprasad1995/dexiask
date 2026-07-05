@@ -69,6 +69,11 @@ class GitRepo:
         out = self._run("for-each-ref", "--format=%(refname:short)", "refs/heads")
         return [b for b in out.splitlines() if b]  # type: ignore[union-attr]
 
+    def head_branch(self) -> str:
+        """The branch HEAD points at. For a single-branch mirror this is the
+        branch it tracks — the source's default when none was pinned."""
+        return self._run("symbolic-ref", "--short", "HEAD").strip()  # type: ignore[union-attr]
+
     # ------------------------------------------------------------------ trees
     def ls_tree(self, ref: str, subpath: str | None = None) -> list[TreeEntry]:
         args = ["ls-tree", "-r", "-z", ref]

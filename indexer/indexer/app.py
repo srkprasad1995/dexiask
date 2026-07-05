@@ -169,7 +169,7 @@ def create_app(
                 mirror = ctx.mirror_for(r.id)
                 entry: dict[str, Any] = {"id": r.id, "indexed": mirror.exists()}
                 if mirror.exists():
-                    entry["branch"] = r.primary_branch
+                    entry["branch"] = r.primary_branch or mirror.tracked_branch()
                     entry["commit"] = service.state.get_commit(r.id)
                 repos.append(entry)
             return repos
@@ -257,7 +257,7 @@ def create_app(
                 entry: dict[str, Any] = {
                     "id": r.id,
                     "indexed": indexed,
-                    "branch": r.primary_branch,
+                    "branch": r.primary_branch or (mirror.tracked_branch() if indexed else ""),
                 }
                 if r.url:
                     entry["url"] = r.url
@@ -284,7 +284,7 @@ def create_app(
         if repo is None:
             return JSONResponse({"error": f"unknown repo {repo_id!r}"}, status_code=404)
         docs = await asyncio.to_thread(
-            load_domain_docs, settings.data_dir, repo.id, repo.primary_branch
+            load_domain_docs, settings.data_dir, repo.id, ctx.primary_branch(repo.id)
         )
         return JSONResponse({"docs": docs})
 
@@ -311,6 +311,11 @@ def create_app(
 
     @app.delete("/v1/repos/{repo_id}")
     async def deregister_repo(repo_id: str) -> dict[str, Any]:
+        # Purge the index artifacts (collection, mirror, docs, state) before
+        # dropping the registration so nothing is left orphaned on the volume.
+        repo = ctx.registry.get(repo_id)
+        if repo is not None:
+            await asyncio.to_thread(service.purge_repo, repo)
         removed = repo_store.delete(repo_id)
         ctx.registry = IndexerConfig(
             repos=[r for r in ctx.registry.repos if r.id != repo_id],

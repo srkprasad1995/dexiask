@@ -63,4 +63,10 @@ class IndexerContext:
         return mirror.repo()
 
     def primary_branch(self, repo_id: str) -> str:
-        return self.repo_config(repo_id).primary_branch
+        repo = self.repo_config(repo_id)
+        if repo.primary_branch:
+            return repo.primary_branch
+        # Unpinned and not yet resolved in this process: read the tracked branch
+        # straight off the mirror (its default) when one exists.
+        mirror = self.mirror_for(repo_id)
+        return mirror.tracked_branch() if mirror.exists() else ""

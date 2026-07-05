@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -54,7 +55,7 @@ def test_build_repo_mirror_local_has_no_auth(tmp_path):
     m = build_repo_mirror(_settings(tmp_path), repo)
     assert m._auth is None
     assert not is_remote_url(m.source)
-    assert m.branch == "main"
+    assert m.branch is None  # unpinned → follow the source's default branch
 
 
 def test_mirror_clones_single_branch(sample_repo, tmp_path):
@@ -70,6 +71,47 @@ def test_build_repo_mirror_uses_repo_primary_branch(tmp_path):
     repo = RepoConfig(id="r", path="r", primary_branch="develop")
     m = build_repo_mirror(_settings(tmp_path), repo)
     assert m.branch == "develop"
+
+
+def _repo_with_default_branch(path: Path, branch: str) -> None:
+    """Init a one-commit repo whose default branch is ``branch`` (not ``main``)."""
+    path.mkdir()
+    subprocess.run(["git", "-C", str(path), "init", "-q", "-b", branch], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.email", "t@e.com"], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "T"], check=True)
+    (path / "x.py").write_text("y = 1\n")
+    subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(path), "commit", "-qm", "c1"], check=True)
+
+
+def test_mirror_unpinned_follows_source_default_branch(tmp_path):
+    """A repo whose default branch isn't ``main`` (e.g. Kafka's ``trunk``) is
+    cloned + fetched on that branch when ``primary_branch`` is left empty."""
+    src = tmp_path / "src"
+    _repo_with_default_branch(src, "trunk")
+    m = Mirror(tmp_path / "m.git", src)  # unpinned
+    m.ensure()
+    assert m.tracked_branch() == "trunk"
+    assert m.repo().head_branch() == "trunk"
+    m.fetch()  # subsequent refresh finds the tracked branch off HEAD
+    assert set(m.repo().branches()) == {"trunk"}
+
+
+def test_index_repo_resolves_default_branch(tmp_path):
+    """Indexing an unpinned repo records the source's real default branch so
+    docs/reconcile/read tools key off it."""
+    src = tmp_path / "src"
+    _repo_with_default_branch(src, "trunk")
+    settings = _settings(tmp_path)
+    repo = RepoConfig(id="r", url=f"file://{src}")  # unpinned
+    registry = IndexerConfig(repos=[repo])
+    svc = IndexService(
+        settings, registry, store=QdrantStore(location=":memory:"),
+        embedder=FakeProvider(dim=16), state=InMemoryStateStore(), lock=InMemoryLock(),
+    )
+    out = svc.index_repo("r")
+    assert out["branch"] == "trunk"
+    assert repo.primary_branch == "trunk"  # resolved in place
 
 
 def test_build_repo_mirror_https_uses_token(tmp_path):

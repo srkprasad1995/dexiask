@@ -21,6 +21,7 @@ class StateStore(Protocol):
     def indexed_paths(self, repo_id: str) -> dict[str, str]: ...
     def set_path(self, repo_id: str, path: str, blob_sha: str) -> None: ...
     def remove_path(self, repo_id: str, path: str) -> None: ...
+    def forget(self, repo_id: str) -> None: ...
 
 
 class InMemoryStateStore(StateStore):
@@ -42,3 +43,7 @@ class InMemoryStateStore(StateStore):
 
     def remove_path(self, repo_id: str, path: str) -> None:
         self._paths.get(repo_id, {}).pop(path, None)
+
+    def forget(self, repo_id: str) -> None:
+        self._commits.pop(repo_id, None)
+        self._paths.pop(repo_id, None)

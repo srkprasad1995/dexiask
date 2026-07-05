@@ -61,8 +61,12 @@ def _git(*args: str, auth_header: str | None = None) -> None:
 
 class Mirror:
     """A bare, single-branch mirror of one repo, fetched from a local git dir or
-    a remote URL. Only the repo's primary ``branch`` is tracked (default-branch
-    only), which keeps clone time, disk, and every fetch minimal.
+    a remote URL. Only one branch is tracked (default-branch only), which keeps
+    clone time, disk, and every fetch minimal.
+
+    ``branch`` may be ``None`` (or empty) to follow the source's own default
+    branch — the mirror is cloned without ``--branch`` so git picks the remote
+    HEAD, and the tracked branch is then read back off the mirror's HEAD.
     """
 
     def __init__(
@@ -70,11 +74,11 @@ class Mirror:
         mirror_dir: Path,
         source: str | Path,
         *,
-        branch: str = "main",
+        branch: str | None = None,
         auth_header: str | None = None,
     ) -> None:
         self.mirror_dir = Path(mirror_dir)
-        self.branch = branch
+        self.branch = branch or None
         self._auth = auth_header
         src = str(source)
         if is_remote_url(src):
@@ -93,16 +97,25 @@ class Mirror:
             self.fetch()
             return
         self.mirror_dir.parent.mkdir(parents=True, exist_ok=True)
+        # With no pinned branch, omit ``--branch`` so git clones the source's
+        # own default branch (its HEAD).
+        branch_args = ["--branch", self.branch] if self.branch else []
         _git(
-            "clone", "--bare", "--single-branch", "--branch", self.branch,
+            "clone", "--bare", "--single-branch", *branch_args,
             self.source, str(self.mirror_dir), auth_header=self._auth,
         )
 
+    def tracked_branch(self) -> str:
+        """The branch this mirror tracks — the pinned name, or the default read
+        off the existing mirror's HEAD."""
+        return self.branch or self.repo().head_branch()
+
     def fetch(self) -> None:
         """Refresh the tracked branch's ref from the source."""
+        branch = self.tracked_branch()
         _git(
             "--git-dir", str(self.mirror_dir), "fetch", self.source,
-            f"+refs/heads/{self.branch}:refs/heads/{self.branch}", auth_header=self._auth,
+            f"+refs/heads/{branch}:refs/heads/{branch}", auth_header=self._auth,
         )
 
     def repo(self) -> GitRepo:
@@ -125,6 +138,6 @@ def build_repo_mirror(
             if effective and _HTTP_RE.match(repo.url)
             else None
         )
-        return Mirror(mdir, repo.url, branch=repo.primary_branch, auth_header=header)
+        return Mirror(mdir, repo.url, branch=repo.primary_branch or None, auth_header=header)
     src = resolve_repo_path(settings.workspace_root, repo.path)
-    return Mirror(mdir, src, branch=repo.primary_branch)
+    return Mirror(mdir, src, branch=repo.primary_branch or None)

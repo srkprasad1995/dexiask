@@ -12,6 +12,7 @@ lexical/git/read tools serve live data) and reports the semantic index as pendin
 from __future__ import annotations
 
 import logging
+import shutil
 from typing import Any
 
 from .config import IndexerConfig, RepoConfig
@@ -28,6 +29,7 @@ from .embedding.base import EmbeddingProvider
 from .git import GitRepo
 from .git.mirror import Mirror, build_repo_mirror
 from .lock import Lock
+from .paths import docs_cache_path, mirror_path
 from .pipeline import Pipeline
 from .pipeline.state import StateStore
 from .settings import Settings
@@ -51,9 +53,26 @@ class IndexService:
         self.registry = registry
         self.state = state
         self.lock = lock
+        self.store = store
         self.pipeline: Pipeline | None = (
             Pipeline(settings, store, embedder, state) if store and embedder else None
         )
+
+    def purge_repo(self, repo: RepoConfig) -> None:
+        """Delete every index artifact for a repo — its Qdrant collection, bare
+        mirror, doc cache, and in-memory state. Removing the registration is the
+        caller's concern; this only reclaims what indexing produced."""
+        if self.store is not None:
+            try:
+                self.store.drop_collection(repo.collection)
+            except Exception as e:  # best-effort; a missing collection is fine
+                log.warning("dropping collection for %s failed: %s", repo.id, e)
+        for path in (
+            mirror_path(self.settings.data_dir, repo.id),
+            docs_cache_path(self.settings.data_dir, repo.id),
+        ):
+            shutil.rmtree(path, ignore_errors=True)
+        self.state.forget(repo.id)
 
     def _mirror(self, repo: RepoConfig, token: str | None = None) -> Mirror:
         return build_repo_mirror(self.settings, repo, token=token)
@@ -72,6 +91,11 @@ class IndexService:
             mirror = self._mirror(repo, token)
             mirror.ensure()  # clone/fetch (authenticated for private remotes)
             git = mirror.repo()
+            # A repo with no pinned branch follows the source's default (e.g.
+            # ``trunk``). Capture what the mirror actually tracks so docs, the
+            # reconcile, and every read tool key off the real branch.
+            if not repo.primary_branch:
+                repo.primary_branch = git.head_branch()
             # High-level docs need only git, so they refresh even in degraded mode.
             self._refresh_docs(repo, git)
 

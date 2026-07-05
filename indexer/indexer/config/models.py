@@ -36,8 +36,11 @@ class RepoConfig(BaseModel):
     url: str | None = None
     # Path to the repo, relative to ``workspace_root`` (or absolute within it).
     path: str = ""
-    # The single branch indexed and searched. Default-branch only by design.
-    primary_branch: str = "main"
+    # The single branch indexed and searched. Empty means "follow the source's
+    # default branch" — resolved from the remote/local HEAD at index time — so a
+    # repo whose default isn't ``main`` (e.g. Kafka's ``trunk``) indexes without
+    # pinning. Set a literal name to force a specific branch.
+    primary_branch: str = ""
     # File globs (relative to the repo root / subpath) to include and to exclude.
     # "**" matches any path (including top-level files).
     include: list[str] = Field(default_factory=lambda: ["**"])

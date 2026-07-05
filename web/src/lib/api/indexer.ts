@@ -157,6 +157,23 @@ export function useReindex() {
   });
 }
 
+/** Delete a repo — removes its registration and purges its index (collection,
+ * mirror, docs, state) on the indexer. */
+export function useDeleteRepo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (repoId: string) =>
+      apiSend<{ deregistered: string; removed: boolean }>(
+        `/api/indexer/v1/repos/${encodeURIComponent(repoId)}`,
+        "DELETE",
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: indexerKeys.repos() });
+      qc.invalidateQueries({ queryKey: indexerKeys.status() });
+    },
+  });
+}
+
 /** Run a semantic code search across the index. */
 export function useSearch() {
   return useMutation({
