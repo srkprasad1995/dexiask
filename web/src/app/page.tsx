@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/shell/app-shell";
-import { Chat } from "@/components/chat/chat";
+import { ChatWorkspace } from "@/components/chat/chat-workspace";
 
 const SUGGESTIONS = [
   "How is authentication handled in this codebase?",
@@ -15,7 +15,7 @@ export const metadata = {
 export default function ChatPage() {
   return (
     <AppShell title="Chat">
-      <Chat suggestions={SUGGESTIONS} />
+      <ChatWorkspace suggestions={SUGGESTIONS} />
     </AppShell>
   );
 }

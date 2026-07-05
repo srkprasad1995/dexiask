@@ -8,6 +8,7 @@ import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import type { DexiaskUIMessage } from "@/types/chat";
+import { fetchConversationMessages } from "@/lib/api/conversations";
 import { MessageList } from "@/components/chat/message-list";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { Composer } from "@/components/chat/composer";
@@ -27,8 +28,14 @@ import { Button } from "@/components/ui/button";
  */
 export function Chat({
   suggestions = [],
+  loadConversationId = null,
+  onConversationCreated,
 }: {
   suggestions?: string[];
+  /** When set, load this conversation's transcript on mount (history reopen). */
+  loadConversationId?: string | null;
+  /** Called when a brand-new conversation is assigned an id by the backend. */
+  onConversationCreated?: (id: string) => void;
 }) {
   // Tracks the backend-assigned conversation ID across renders. Seeded null on
   // a new chat; captured from the first `data-conversation` SSE frame so
@@ -58,26 +65,47 @@ export function Chat({
   );
   /* eslint-enable react-hooks/refs, react-hooks/preserve-manual-memoization */
 
-  const { messages, sendMessage, status, stop, regenerate } =
+  const { messages, setMessages, sendMessage, status, stop, regenerate } =
     useChat<DexiaskUIMessage>({
       transport,
       onError: (err) => toast.error(err.message || "Something went wrong"),
     });
 
+  // Reopen a past conversation: on mount, load its transcript and point the ref
+  // at it so follow-up turns attach to the same backend conversation. Chat is
+  // remounted (keyed) when the selection changes, so this runs once per open.
+  useEffect(() => {
+    if (!loadConversationId) return;
+    conversationIdRef.current = loadConversationId;
+    let active = true;
+    fetchConversationMessages(loadConversationId)
+      .then((msgs) => {
+        if (active) setMessages(msgs);
+      })
+      .catch(() => {
+        if (active) toast.error("Failed to load conversation");
+      });
+    return () => {
+      active = false;
+    };
+  }, [loadConversationId, setMessages]);
+
   // Capture the backend-assigned conversation id from the first
   // `data-conversation` SSE frame so follow-up turns reference the same
   // conversation. A ref (not state) so it never re-renders the streaming chat.
+  // Only fires for a brand-new chat (a reopened one already has the ref set).
   useEffect(() => {
     if (conversationIdRef.current) return;
     for (const msg of messages) {
       for (const part of msg.parts ?? []) {
         if (part.type === "data-conversation") {
           conversationIdRef.current = part.data.id;
+          onConversationCreated?.(part.data.id);
           return;
         }
       }
     }
-  }, [messages]);
+  }, [messages, onConversationCreated]);
 
   const handleSend = useCallback(
     (text: string, files: FileUIPart[]) => {
