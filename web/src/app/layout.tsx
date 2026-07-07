@@ -42,10 +42,59 @@ const plexSerif = IBM_Plex_Serif({
   style: ["normal", "italic"],
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://dexiask.com";
+
 export const metadata: Metadata = {
-  title: "Dexiask — chat with your codebase",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "Dexiask — chat with your codebase",
+    template: "%s · Dexiask",
+  },
   description:
-    "Dexiask: an open-source AI assistant that reads your codebase and answers questions with semantic code search.",
+    "Dexiask is an open-source AI assistant that reads your codebase and answers questions with semantic code search. Sign in with GitHub, bring your own API keys, docker compose up, and go.",
+  applicationName: "Dexiask",
+  keywords: [
+    "chat with your codebase",
+    "AI code search",
+    "semantic code search",
+    "open source AI assistant",
+    "codebase Q&A",
+    "self-hosted AI",
+    "Claude codebase agent",
+    "Dexiask",
+  ],
+  authors: [{ name: "Dexiask" }],
+  creator: "Dexiask",
+  publisher: "Dexiask",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "Dexiask",
+    url: SITE_URL,
+    title: "Dexiask — chat with your codebase",
+    description:
+      "An open-source AI assistant that reads your codebase and answers questions with semantic code search. Bring your own keys and self-host.",
+    // OG image supplied by the generated app/opengraph-image route.
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Dexiask — chat with your codebase",
+    description:
+      "Open-source AI assistant that reads your codebase and answers questions with semantic code search.",
+    // Twitter image supplied by the generated app/twitter-image route.
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
 };
 
 export default function RootLayout({
