@@ -31,6 +31,7 @@ from .git.mirror import Mirror, build_repo_mirror
 from .lock import Lock
 from .paths import docs_cache_path, mirror_path
 from .pipeline import Pipeline
+from .pipeline.progress import PHASE_CLONING, PHASE_DOCS, ProgressStore
 from .pipeline.state import StateStore
 from .settings import Settings
 from .store import QdrantStore
@@ -48,14 +49,18 @@ class IndexService:
         embedder: EmbeddingProvider | None,
         state: StateStore,
         lock: Lock,
+        progress: ProgressStore | None = None,
     ) -> None:
         self.settings = settings
         self.registry = registry
         self.state = state
         self.lock = lock
         self.store = store
+        self.progress = progress or ProgressStore()
         self.pipeline: Pipeline | None = (
-            Pipeline(settings, store, embedder, state) if store and embedder else None
+            Pipeline(settings, store, embedder, state, self.progress)
+            if store and embedder
+            else None
         )
 
     def purge_repo(self, repo: RepoConfig) -> None:
@@ -88,29 +93,40 @@ class IndexService:
             if not got:
                 return {"repo": repo_id, "status": "already_running"}
 
-            mirror = self._mirror(repo, token)
-            mirror.ensure()  # clone/fetch (authenticated for private remotes)
-            git = mirror.repo()
-            # A repo with no pinned branch follows the source's default (e.g.
-            # ``trunk``). Capture what the mirror actually tracks so docs, the
-            # reconcile, and every read tool key off the real branch.
-            if not repo.primary_branch:
-                repo.primary_branch = git.head_branch()
-            # High-level docs need only git, so they refresh even in degraded mode.
-            self._refresh_docs(repo, git)
+            # Publish live progress for the status endpoints; ``clear`` on the way
+            # out (including on failure) so a crashed pass never leaves a stuck phase.
+            self.progress.begin(repo.id, PHASE_CLONING)
+            try:
+                mirror = self._mirror(repo, token)
+                mirror.ensure()  # clone/fetch (authenticated for private remotes)
+                git = mirror.repo()
+                # A repo with no pinned branch follows the source's default (e.g.
+                # ``trunk``). Capture what the mirror actually tracks so docs, the
+                # reconcile, and every read tool key off the real branch.
+                if not repo.primary_branch:
+                    repo.primary_branch = git.head_branch()
+                # High-level docs need only git, so they refresh even in degraded mode.
+                self.progress.set_phase(repo.id, PHASE_DOCS)
+                self._refresh_docs(repo, git)
 
-            if self.pipeline is None:
-                return {"repo": repo_id, "status": "mirror_refreshed", "semantic_index": "pending"}
+                if self.pipeline is None:
+                    return {
+                        "repo": repo_id,
+                        "status": "mirror_refreshed",
+                        "semantic_index": "pending",
+                    }
 
-            res = self.pipeline.reconcile(repo, git, full=full)
-            return {
-                "repo": repo_id,
-                "status": "indexed",
-                "branch": res.branch,
-                "commit": res.commit,
-                "embedded": res.embedded,
-                "removed": res.removed,
-            }
+                res = self.pipeline.reconcile(repo, git, full=full)
+                return {
+                    "repo": repo_id,
+                    "status": "indexed",
+                    "branch": res.branch,
+                    "commit": res.commit,
+                    "embedded": res.embedded,
+                    "removed": res.removed,
+                }
+            finally:
+                self.progress.clear(repo.id)
 
     def _refresh_docs(self, repo: RepoConfig, git: GitRepo) -> None:
         if repo.primary_branch not in git.branches():

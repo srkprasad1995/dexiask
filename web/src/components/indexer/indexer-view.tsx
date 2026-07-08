@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 
 import {
+  isActivePhase,
   useAddRepo,
   useDeleteRepo,
   useDomainDocs,
@@ -40,7 +41,9 @@ function repoLabel(repo: Repo): string {
   return repo.url || repo.path || repo.id;
 }
 
-function statusVariant(status?: string): "done" | "build" | "destructive" | "secondary" {
+export function statusVariant(
+  status?: string,
+): "done" | "build" | "destructive" | "secondary" {
   switch (status) {
     case "ready":
     case "indexed":
@@ -48,12 +51,24 @@ function statusVariant(status?: string): "done" | "build" | "destructive" | "sec
       return "done";
     case "indexing":
     case "pending":
+    case "cloning":
+    case "docs":
+    case "embedding":
       return "build";
     case "error":
       return "destructive";
     default:
       return "secondary";
   }
+}
+
+/** Badge text for a repo: the live phase (with embedding percent) while a run is
+ * active, otherwise the plain indexed / not indexed state. */
+export function repoStatusLabel(repo: Repo): string {
+  if (isActivePhase(repo.status)) {
+    return repo.percent != null ? `${repo.status} ${repo.percent}%` : repo.status!;
+  }
+  return repo.indexed ? "indexed" : "not indexed";
 }
 
 /** The "add a repo" form: a git URL or a path under /workspace. */
@@ -141,9 +156,7 @@ function RepoRow({ repo, admin }: { repo: Repo; admin: boolean }) {
           {repo.chunks.toLocaleString()} chunks
         </span>
       )}
-      <Badge variant={statusVariant(repo.status)}>
-        {repo.status ?? (repo.indexed ? "indexed" : "not indexed")}
-      </Badge>
+      <Badge variant={statusVariant(repo.status)}>{repoStatusLabel(repo)}</Badge>
       {admin && (
         <Button
           variant="outline"

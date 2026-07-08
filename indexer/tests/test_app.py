@@ -11,8 +11,9 @@ from .fakes import FakeProvider
 
 
 @pytest.fixture
-def client(sample_repo: Path, tmp_path: Path) -> TestClient:
-    from indexer.app import create_app
+def app_ctx(sample_repo: Path, tmp_path: Path):
+    """The context + service the client is built on, exposed so tests can seed the
+    shared progress store the status endpoints read from."""
     from indexer.lock import InMemoryLock
     from indexer.pipeline import InMemoryStateStore
     from indexer.service import IndexService
@@ -28,6 +29,19 @@ def client(sample_repo: Path, tmp_path: Path) -> TestClient:
         settings, registry, store=store, embedder=FakeProvider(dim=16),
         state=InMemoryStateStore(), lock=InMemoryLock(),
     )
+    return ctx, service
+
+
+@pytest.fixture
+def service(app_ctx):
+    return app_ctx[1]
+
+
+@pytest.fixture
+def client(app_ctx) -> TestClient:
+    from indexer.app import create_app
+
+    ctx, service = app_ctx
     return TestClient(create_app(ctx, service))
 
 
@@ -57,6 +71,37 @@ def test_reindex_then_status(client):
 
 def test_reindex_unknown_repo(client):
     assert client.post("/reindex", json={"repo": "nope"}).status_code == 404
+
+
+def test_status_omits_progress_when_idle(client):
+    # No active run → no status/percent fields, just the plain indexed flag.
+    entry = client.get("/v1/status").json()["repos"][0]
+    assert "status" not in entry
+    assert "percent" not in entry
+
+
+def test_status_and_repos_report_active_progress(client, service):
+    from indexer.pipeline.progress import PHASE_EMBEDDING
+
+    # Simulate a run mid-embed by seeding the shared progress store the endpoints read.
+    service.progress.begin("r", PHASE_EMBEDDING)
+    service.progress.set_total("r", 8)
+    service.progress.advance("r", 6)
+
+    for path in ("/v1/status", "/v1/repos"):
+        entry = client.get(path).json()["repos"][0]
+        assert entry["status"] == PHASE_EMBEDDING
+        assert entry["percent"] == 75  # 6/8
+
+
+def test_repos_progress_percent_only_while_embedding(client, service):
+    from indexer.pipeline.progress import PHASE_CLONING
+
+    # Non-embedding phases report the phase but carry no percent.
+    service.progress.begin("r", PHASE_CLONING)
+    entry = client.get("/v1/repos").json()["repos"][0]
+    assert entry["status"] == PHASE_CLONING
+    assert "percent" not in entry
 
 
 def test_status_reports_ready(client):

@@ -32,6 +32,7 @@ from .git.repo import GitError
 from .lock import InMemoryLock
 from .mcp.server import build_session_manager
 from .pipeline import InMemoryStateStore
+from .pipeline.progress import PHASE_EMBEDDING
 from .registry_store import FsRepoStore, RepoStore
 from .scheduler import Scheduler
 from .service import IndexService
@@ -39,6 +40,17 @@ from .settings import Settings, get_settings
 from .store import QdrantStore
 
 log = logging.getLogger("indexer")
+
+
+def _merge_progress(service: IndexService, repo_id: str, entry: dict[str, Any]) -> None:
+    """Overlay the live index phase (and embedding percent) onto a status entry,
+    only while a run is active — idle repos keep the plain ``indexed`` fallback."""
+    p = service.progress.snapshot(repo_id)
+    if p is None:
+        return
+    entry["status"] = p.phase
+    if p.phase == PHASE_EMBEDDING and p.total:
+        entry["percent"] = round(p.processed * 100 / p.total)
 
 
 def _git_token_path(settings: Settings) -> Path:
@@ -171,6 +183,7 @@ def create_app(
                 if mirror.exists():
                     entry["branch"] = r.primary_branch or mirror.tracked_branch()
                     entry["commit"] = service.state.get_commit(r.id)
+                _merge_progress(service, r.id, entry)
                 repos.append(entry)
             return repos
 
@@ -270,6 +283,7 @@ def create_app(
                             entry["chunks"] = ctx.store.count(r.collection)
                         except Exception:  # pragma: no cover - depends on store
                             pass
+                _merge_progress(service, r.id, entry)
                 repos.append(entry)
             return repos
 

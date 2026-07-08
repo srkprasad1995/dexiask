@@ -28,8 +28,10 @@ export interface Repo {
   /** A path under the indexer's /workspace mount (alternative to `url`). */
   path?: string;
   indexed: boolean;
-  /** Free-form status string, e.g. "idle" | "indexing" | "error". */
+  /** Live phase while a run is active: "cloning" | "docs" | "embedding". */
   status?: string;
+  /** Percent through the embedding phase (0-100), set only while embedding. */
+  percent?: number;
   /** Number of embedded chunks, when reported. */
   chunks?: number;
   /** branch -> commit sha, when reported. */
@@ -112,12 +114,23 @@ export interface GitTokenStatus {
 // Hooks
 // ---------------------------------------------------------------------------
 
-/** The registered repos and their per-repo index status. */
+/** Phases a repo moves through while a reindex is running. */
+const ACTIVE_PHASES = new Set(["cloning", "docs", "embedding"]);
+
+/** Whether a repo status string denotes an in-progress index pass. */
+export function isActivePhase(status?: string): boolean {
+  return status != null && ACTIVE_PHASES.has(status);
+}
+
+/** The registered repos and their per-repo index status. Polls every 2s while
+ * any repo is actively indexing so the live percent updates, then stops. */
 export function useRepos() {
   return useQuery({
     queryKey: indexerKeys.repos(),
     queryFn: () => apiGet<ReposResponse>("/api/indexer/v1/repos"),
     staleTime: 10_000,
+    refetchInterval: (query) =>
+      query.state.data?.repos?.some((r) => isActivePhase(r.status)) ? 2_000 : false,
   });
 }
 

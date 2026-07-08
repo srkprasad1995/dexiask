@@ -26,6 +26,7 @@ from ..store import (
     build_point,
     doc_virtual_path,
 )
+from .progress import PHASE_EMBEDDING, ProgressStore
 from .state import StateStore
 
 
@@ -44,11 +45,13 @@ class Pipeline:
         store: QdrantStore,
         embedder: EmbeddingProvider,
         state: StateStore,
+        progress: ProgressStore | None = None,
     ) -> None:
         self.settings = settings
         self.store = store
         self.embedder = embedder
         self.state = state
+        self.progress = progress
 
     # ------------------------------------------------------------ filtering
     def _included(self, repo: RepoConfig, path: str) -> bool:
@@ -135,8 +138,14 @@ class Pipeline:
         actual = self.state.indexed_paths(repo.id)
         skip = {} if full else actual
 
+        if self.progress is not None:
+            self.progress.set_phase(repo.id, PHASE_EMBEDDING)
+            self.progress.set_total(repo.id, len(desired))
+
         embedded = removed = 0
         for path, sha in desired.items():
+            if self.progress is not None:
+                self.progress.advance(repo.id)
             if skip.get(path) == sha:
                 continue
             if self._embed_path(repo, git, sha, path):
