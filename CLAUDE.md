@@ -139,9 +139,24 @@ manages them via the `/api/mcp/*` BFF proxy.
 ## Environment
 
 Copy `.env.example` to `.env`. All secrets come from env (`ANTHROPIC_API_KEY`,
-`VOYAGE_API_KEY`, `SLACK_*`); nothing is baked into images. Service URLs use
+`VOYAGE_API_KEY`, `SLACK_*`); no secrets are baked into images. Service URLs use
 compose-internal DNS (`http://engine:8080`, `http://indexer:8080`, `http://memory:8080`,
 `http://qdrant:6333`, `postgres:5432`).
+
+**Local mode (no API keys)**: `COMPOSE_PROFILES=local` in `.env` adds an `ollama`
+sidecar whose text + embedding models (`DEXIASK_LOCAL_TEXT_MODEL` /
+`DEXIASK_LOCAL_EMBED_MODEL`, defaults `qwen2.5:1.5b` / `qwen3-embedding:0.6b`) are
+deliberately **baked into the image at build time** — nothing downloads after the
+stack is up. The profile injects `CLAUDE_ENGINE_LOCAL_BASE_URL` /
+`DEXIASK_OLLAMA_BASE_URL` (= `http://ollama:11434`); with no API key the engine
+dispatches jobs to `engine_core.local_runtime.LocalOllamaRuntime` — a compact
+tool-calling loop over Ollama's native `/api/chat` (role prompt + workspace tools +
+the `local_remote_tools` MCP allowlist; no Claude CLI, whose scaffolding is far too
+many prompt tokens for a small CPU model) with its own FS session store — overriding
+the Job's model with the local one (dream jobs included). The indexer's `auto`
+embedding provider resolves voyage → openai → ollama. Real keys always win. Local
+and hosted embeddings share a dim (1024) but not a vector space: switching requires
+a re-index.
 
 Feature-gating env (all optional; each degrades gracefully when unset):
 - **Auth**: `DEXIASK_GITHUB_CLIENT_ID`/`_SECRET` (empty → dev-fallback, no login),

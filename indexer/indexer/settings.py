@@ -35,15 +35,22 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
 
     # --- Embeddings ---
-    # One of: "voyage", "openai", "hash". Must be identical across repos so their
-    # vectors live in a comparable space for cross-repo search.
-    embedding_provider: str = "voyage"
+    # One of: "auto", "voyage", "openai", "ollama", "hash". Must be identical
+    # across repos so their vectors live in a comparable space for cross-repo
+    # search. "auto" picks the first configured provider: voyage (if key) →
+    # openai (if key) → ollama (if base URL, i.e. the local sidecar is up).
+    embedding_provider: str = "auto"
     embedding_model: str = "voyage-code-3"
     # Vector dimension; pinned and stored in each collection's metadata.
     embedding_dim: int = 1024
     embedding_batch_size: int = 128
     voyage_api_key: str = ""
     openai_api_key: str = ""
+    # Local Ollama sidecar (no API key). Set by the compose `local` profile;
+    # empty = unavailable. The model has its own setting because
+    # ``embedding_model`` stays pinned to the hosted default.
+    ollama_base_url: str = ""
+    ollama_embedding_model: str = "qwen3-embedding:0.6b"
 
     # --- Remote repo auth ---
     # Default token used to clone/fetch private HTTPS repos when a repo declares a
