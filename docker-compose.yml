@@ -44,9 +44,11 @@ services:
       # (e.g. OpenRouter → https://openrouter.ai/api). Blank = api.anthropic.com.
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
       CLAUDE_ENGINE_MODEL: ${DEXIASK_MODEL:-claude-sonnet-5}
-      # No OTel collector ships with the stack; disable the exporter to keep logs
-      # clean. Set to "false" and add a collector to enable tracing.
+      # No OTel collector ships with the stack; disabled by default. To enable,
+      # set OTEL_SDK_DISABLED=false and point OTEL_EXPORTER_OTLP_ENDPOINT at an
+      # OTLP/HTTP collector (e.g. http://host.docker.internal:4322).
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
       - "${DEXIASK_ENGINE_PORT:-25053}:8080"
     volumes:
@@ -75,6 +77,7 @@ services:
       # validates each caller's GitHub token itself). Empty = no gating.
       DEXIASK_INTERNAL_TOKEN: ${DEXIASK_INTERNAL_TOKEN:-}
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
       - "${DEXIASK_INDEXER_PORT:-25054}:8080"
     volumes:
