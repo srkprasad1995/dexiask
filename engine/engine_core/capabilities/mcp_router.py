@@ -89,6 +89,14 @@ class RemoteMcpRouter:
                     await session.initialize()
                     yield session
 
+    async def catalog(self, name: str) -> list[dict[str, Any]]:
+        """The cached tool list for *name* (fetched on first use).
+
+        Public for consumers that need exact tool names/schemas rather than a
+        capability search (the local runtime's tool allowlist).
+        """
+        return await self._ensure_catalog(name)
+
     async def _ensure_catalog(self, name: str) -> list[dict[str, Any]]:
         """Fetch + cache the tool list for *name* (once per run)."""
         if name in self._catalog:

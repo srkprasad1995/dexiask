@@ -177,3 +177,137 @@ async def test_attachment_force_enables_read(tmp_path):
     assert "Read" in rt.ctx.requested_tools
     assert rt.ctx.permission_mode == "dontAsk"
     assert [d.name for d in rt.ctx.builtin_tools.workspace] == ["Read", "Glob", "Grep"]
+
+
+# --- Local model fallback (no API key → swap to the local runtime) ---
+
+
+class FakeLocalRuntime(FakeRuntime):
+    """Capturing stand-in for the local-fallback runtime."""
+
+    def name(self) -> str:
+        return "fake-local"
+
+    def credential_env_names(self) -> tuple[str, str]:
+        return ("LOCAL_API_KEY", "LOCAL_BASE_URL")
+
+    async def run(self, ctx: RunContext) -> str | None:
+        self.ctx = ctx
+        return "sess-local"
+
+
+class SwappingRuntime(FakeRuntime):
+    """FakeRuntime whose local fallback is a capturing FakeLocalRuntime."""
+
+    def __init__(self):
+        super().__init__()
+        self.local = FakeLocalRuntime()
+
+    def local_runtime(self) -> FakeLocalRuntime:
+        return self.local
+
+
+@pytest.mark.asyncio
+async def test_local_fallback_swaps_runtime(tmp_path):
+    # No Job key, no env key, but a local server is configured → the run is
+    # dispatched to the runtime's local_runtime() with the local model.
+    rt = SwappingRuntime()
+    events, emit = _collect()
+    job = Job.model_validate({
+        "messages": [{"role": "user", "content": "hi"}],
+        "workspacePath": str(tmp_path),
+        "model": "claude-sonnet-5",
+    })
+    settings = FakeSettings(local_base_url="http://ollama:11434", local_model="qwen2.5:1.5b")
+    sid = await run(job, rt, emit, settings)
+    assert sid == "sess-local"
+    assert not any(isinstance(e, ErrorEvent) for e in events)
+    assert rt.ctx is None  # the original runtime never ran
+    assert rt.local.ctx.model == "qwen2.5:1.5b"
+    assert rt.local.ctx.provider_env == {
+        "LOCAL_API_KEY": "local",
+        "LOCAL_BASE_URL": "http://ollama:11434",
+    }
+
+
+@pytest.mark.asyncio
+async def test_local_fallback_without_local_model_keeps_job_model(tmp_path):
+    rt = SwappingRuntime()
+    _, emit = _collect()
+    job = Job.model_validate({
+        "messages": [{"role": "user", "content": "hi"}],
+        "workspacePath": str(tmp_path),
+        "model": "some-model",
+    })
+    await run(job, rt, emit, FakeSettings(local_base_url="http://ollama:11434"))
+    assert rt.local.ctx.model == "some-model"
+
+
+@pytest.mark.asyncio
+async def test_local_runtime_drops_interactive_tools(tmp_path):
+    # The default local runtime doesn't support interactive tools, so AskChoice
+    # must not be registered even when the Job allows it.
+    class NonInteractiveLocal(FakeLocalRuntime):
+        def supports_interactive(self) -> bool:
+            return False
+
+    rt = SwappingRuntime()
+    rt.local = NonInteractiveLocal()
+    _, emit = _collect()
+    job = Job.model_validate({
+        "messages": [{"role": "user", "content": "hi"}],
+        "workspacePath": str(tmp_path),
+        "allowedTools": ["Read", "AskChoice"],
+        "permissionMode": "dontAsk",
+    })
+    await run(job, rt, emit, FakeSettings(local_base_url="http://ollama:11434"))
+    assert rt.local.ctx.builtin_tools.interactive == []
+
+
+@pytest.mark.asyncio
+async def test_job_key_wins_over_local_fallback(tmp_path):
+    rt = SwappingRuntime()
+    _, emit = _collect()
+    job = Job.model_validate({
+        "messages": [{"role": "user", "content": "hi"}],
+        "workspacePath": str(tmp_path),
+        "model": "claude-sonnet-5",
+        "apiKey": "job-key",
+    })
+    settings = FakeSettings(local_base_url="http://ollama:11434", local_model="qwen2.5:1.5b")
+    await run(job, rt, emit, settings)
+    assert rt.local.ctx is None  # local runtime not used
+    assert rt.ctx.model == "claude-sonnet-5"
+    assert rt.ctx.provider_env == {"FAKE_API_KEY": "job-key"}
+
+
+@pytest.mark.asyncio
+async def test_env_key_wins_over_local_fallback(tmp_path):
+    rt = SwappingRuntime()
+    _, emit = _collect()
+    job = Job.model_validate({
+        "messages": [{"role": "user", "content": "hi"}],
+        "workspacePath": str(tmp_path),
+        "model": "claude-sonnet-5",
+    })
+    settings = FakeSettings(
+        fake_key="env-key",
+        local_base_url="http://ollama:11434", local_model="qwen2.5:1.5b",
+    )
+    await run(job, rt, emit, settings)
+    assert rt.local.ctx is None
+    assert rt.ctx.model == "claude-sonnet-5"
+    assert rt.ctx.provider_env == {"FAKE_API_KEY": "env-key"}
+
+
+@pytest.mark.asyncio
+async def test_no_key_and_no_local_still_errors(tmp_path):
+    rt = FakeRuntime()
+    events, emit = _collect()
+    job = Job.model_validate({
+        "messages": [{"role": "user", "content": "hi"}],
+        "workspacePath": str(tmp_path),
+    })
+    sid = await run(job, rt, emit, FakeSettings())
+    assert sid is None
+    assert any(isinstance(e, ErrorEvent) and "COMPOSE_PROFILES=local" in e.message for e in events)

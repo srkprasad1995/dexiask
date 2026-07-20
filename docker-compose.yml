@@ -35,15 +35,64 @@ services:
       timeout: 5s
       retries: 10
 
+  # Local no-API-key mode: `COMPOSE_PROFILES=local` in .env enables this sidecar
+  # and the fallback env below. Models are baked into the image at build time
+  # (build args) — nothing is downloaded after the stack is up.
+  ollama:
+    build:
+      context: ./ollama
+      args:
+        TEXT_MODEL: ${DEXIASK_LOCAL_TEXT_MODEL:-qwen2.5:1.5b}
+        EMBED_MODEL: ${DEXIASK_LOCAL_EMBED_MODEL:-qwen3-embedding:0.6b}
+        # Tuning baked into the TEXT model only (not global env), so the tiny
+        # embedding model keeps its small default context. See ollama/Dockerfile
+        # for why (KV-cache size; thread-contention slowdown on laptops).
+        TEXT_CONTEXT: ${DEXIASK_OLLAMA_CONTEXT_LENGTH:-16384}
+        TEXT_THREADS: ${DEXIASK_OLLAMA_THREADS:-4}
+    profiles: ["local"]
+    environment:
+      OLLAMA_MODELS: /models
+      # Keep models resident (text + embed loaded side by side).
+      OLLAMA_KEEP_ALIVE: -1
+      OLLAMA_MAX_LOADED_MODELS: 2
+      # One slot → the llama.cpp prefix cache holds the conversation prefix
+      # between turns, so turn N only evaluates the delta.
+      OLLAMA_NUM_PARALLEL: 1
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # On an NVIDIA GPU host, uncomment to offload inference:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
   engine:
     build:
       context: ./engine
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
+      # Optional when the `local` profile is enabled — the engine then falls
+      # back to the Ollama sidecar. Required for Claude-quality answers.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Optional: point the Claude SDK at an Anthropic-compatible gateway
       # (e.g. OpenRouter → https://openrouter.ai/api). Blank = api.anthropic.com.
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
       CLAUDE_ENGINE_MODEL: ${DEXIASK_MODEL:-claude-sonnet-5}
+      # Local fallback (set only when the `local` profile is on): with no API
+      # key the engine runs jobs against the Ollama sidecar's Anthropic-compat
+      # API using this model instead of erroring. A real key always wins.
+      CLAUDE_ENGINE_LOCAL_BASE_URL: ${COMPOSE_PROFILES:+http://ollama:11434}
+      CLAUDE_ENGINE_LOCAL_MODEL: ${DEXIASK_LOCAL_TEXT_MODEL:-qwen2.5:1.5b}
+      # Remote MCP tools exposed to the local model: '*' = all, or a comma
+      # allowlist — small models often follow tools better with fewer of them.
+      CLAUDE_ENGINE_LOCAL_REMOTE_TOOLS: ${DEXIASK_LOCAL_REMOTE_TOOLS:-*}
+      # No OTel collector ships with the stack; disable the exporter to keep logs
+      # clean. Set to "false" and add a collector to enable tracing.
       # No OTel collector ships with the stack; disabled by default. To enable,
       # set OTEL_SDK_DISABLED=false and point OTEL_EXPORTER_OTLP_ENDPOINT at an
       # OTLP/HTTP collector (e.g. http://host.docker.internal:4322).
@@ -64,10 +113,16 @@ services:
     build:
       context: ./indexer
     environment:
-      DEXIASK_VOYAGE_API_KEY: ${VOYAGE_API_KEY:?set VOYAGE_API_KEY in .env}
+      # Optional when the `local` profile is enabled — the `auto` provider then
+      # falls back to the Ollama sidecar for embeddings. A real key always wins.
+      DEXIASK_VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
       DEXIASK_QDRANT_URL: ${DEXIASK_QDRANT_URL:-http://qdrant:6333}
+      DEXIASK_EMBEDDING_PROVIDER: ${DEXIASK_EMBEDDING_PROVIDER:-auto}
       DEXIASK_EMBEDDING_MODEL: ${DEXIASK_EMBEDDING_MODEL:-voyage-code-3}
       DEXIASK_EMBEDDING_DIM: ${DEXIASK_EMBEDDING_DIM:-1024}
+      DEXIASK_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEXIASK_OLLAMA_BASE_URL: ${COMPOSE_PROFILES:+http://ollama:11434}
+      DEXIASK_OLLAMA_EMBEDDING_MODEL: ${DEXIASK_LOCAL_EMBED_MODEL:-qwen3-embedding:0.6b}
       # Generated domain-knowledge docs (LLM), embedded as content_type=doc and
       # searchable alongside code. Off by default; needs an Anthropic key.
       DEXIASK_ENABLE_DOMAIN_DOCS: ${DEXIASK_ENABLE_DOMAIN_DOCS:-false}

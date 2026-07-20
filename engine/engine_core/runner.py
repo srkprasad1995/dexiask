@@ -49,11 +49,6 @@ async def run(
     Emits an ``ErrorEvent`` and returns ``None`` on unrecoverable setup errors.
     """
     model = job.resolved_model(settings.default_model)
-    log(
-        f"Starting. runtime={runtime.name()!r} role={job.role.value!r} model={model!r} "
-        f"allowed_tools={job.allowed_tools!r} permission_mode={job.permission_mode.value!r} "
-        f"session_id={job.session_id!r}"
-    )
 
     # ── Resolve provider credentials ───────────────────────────────────────
     # Credentials come from the Job when the orchestrator supplies per-workspace
@@ -61,15 +56,29 @@ async def run(
     # (ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL, captured into Settings at startup).
     # This env fallback is what makes the OSS single-user build work with just an
     # API key in the environment. An empty base URL means "use the provider default".
+    # With no key at all, the job runs on the runtime's local-fallback runtime
+    # (the compact loop over the compose `local` profile's Ollama sidecar) — the
+    # Job's hosted model is replaced by the locally served one.
     key_var, base_var = runtime.credential_env_names()
     effective_api_key = job.api_key or settings.engine_api_key
     effective_base_url = job.base_url or settings.engine_base_url
+    if not effective_api_key and settings.local_base_url:
+        runtime = runtime.local_runtime()
+        key_var, base_var = runtime.credential_env_names()
+        model = settings.local_model or model
+        effective_api_key = "local"  # must be non-empty; the local server ignores auth
+        effective_base_url = settings.local_base_url
+        log(
+            f"No API key configured — falling back to local model {model!r} "
+            f"at {settings.local_base_url!r} via the {runtime.name()!r} runtime"
+        )
     if not effective_api_key:
         emit_fn(
             ErrorEvent(
                 message=(
                     f"No API credentials available. Set {key_var} in the engine "
-                    "environment or supply an apiKey on the Job."
+                    "environment, supply an apiKey on the Job, or enable the "
+                    "local model sidecar (COMPOSE_PROFILES=local)."
                 )
             )
         )
@@ -77,6 +86,12 @@ async def run(
     provider_env: dict[str, str] = {key_var: effective_api_key}
     if effective_base_url:
         provider_env[base_var] = effective_base_url
+
+    log(
+        f"Starting. runtime={runtime.name()!r} role={job.role.value!r} model={model!r} "
+        f"allowed_tools={job.allowed_tools!r} permission_mode={job.permission_mode.value!r} "
+        f"session_id={job.session_id!r}"
+    )
 
     # ── System prompt: base + skills ───────────────────────────────────────
     skills_addendum = load_skills(job.skills_path)
