@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 COMPOSE := docker compose
 
-.PHONY: help up up-local down build logs ps restart test test-backend test-memory test-engine test-indexer test-web lint fmt clean
+.PHONY: help up down build logs ps restart test test-backend test-memory test-engine test-indexer test-web lint fmt clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -10,10 +10,6 @@ help: ## Show this help
 
 up: ## Build (if needed) and start the whole stack
 	$(COMPOSE) up --build -d
-	@echo "web → http://localhost:$${DEXIASK_WEB_PORT:-25051}"
-
-up-local: ## Start with the local no-API-key Ollama sidecar (same as COMPOSE_PROFILES=local in .env)
-	COMPOSE_PROFILES=local $(COMPOSE) up --build -d
 	@echo "web → http://localhost:$${DEXIASK_WEB_PORT:-25051}"
 
 down: ## Stop the stack

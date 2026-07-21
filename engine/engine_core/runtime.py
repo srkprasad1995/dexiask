@@ -139,16 +139,6 @@ class AgentRuntime(ABC):
         ``ctx.provider_env`` from the resolved credentials."""
         return ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL")
 
-    def local_runtime(self) -> AgentRuntime:
-        """The runtime used for the local-model fallback (no API key; jobs run
-        against ``settings.local_base_url``). Defaults to the built-in compact
-        Ollama loop — heavyweight CLI-based runtimes are impractical against a
-        small local model (their scaffolding alone is tens of thousands of
-        prompt tokens)."""
-        from .local_runtime import LocalOllamaRuntime
-
-        return LocalOllamaRuntime()
-
     # ── Capability flags (let the shared core degrade gracefully) ──────────
     def supports_thinking(self) -> bool:
         return False

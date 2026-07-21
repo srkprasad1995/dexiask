@@ -7,11 +7,11 @@ router, the session store, and observability. Each engine subclasses it to add
 its own provider credentials (``ANTHROPIC_API_KEY`` for Claude) and set its
 own ``env_prefix`` and ``default_model``.
 
-Provider credentials come from the Job (``job.api_key`` / ``job.base_url``)
-when the orchestrator supplies them, else from the engine env via the
-``engine_api_key`` / ``engine_base_url`` accessors. When neither yields a key,
-the runner falls back to the local model server (``local_base_url`` /
-``local_model`` — the docker-compose Ollama sidecar) if one is configured.
+Provider credentials are supplied per-request on the Job (``job.api_key`` /
+``job.base_url``), resolved by the Go orchestrator from the workspace's
+UI-configured agent settings — the runner never falls back to engine ``.env``.
+The ``engine_api_key`` / ``engine_base_url`` accessors remain only for tests and
+diagnostics that introspect a configured key.
 
 Use a per-engine cached accessor (``get_settings``) so tests can monkeypatch the
 singleton; ``default_settings()`` here returns a bare base instance for the
@@ -148,47 +148,19 @@ class BaseEngineSettings(BaseSettings):
         ),
     )
 
-    # ── Local model fallback (no-API-key mode) ─────────────────────────────
-    # When neither the Job nor the env yields an API key, the runner runs jobs
-    # against this provider-compatible local server (the docker-compose Ollama
-    # sidecar) instead of erroring. Empty base URL = fallback unavailable.
-    local_base_url: str = Field(
-        default="",
-        description=(
-            "Base URL of a local provider-compatible model server "
-            "(e.g. http://ollama:11434). Used only when no API key is configured."
-        ),
-    )
-    local_model: str = Field(
-        default="",
-        description="Model served locally; replaces the Job's model on fallback.",
-    )
-    local_remote_tools: str = Field(
-        default="*",
-        description=(
-            "Comma-separated allowlist of remote MCP tool names the local "
-            "runtime exposes to the model, or '*' for every tool the attached "
-            "servers offer. Narrow it (e.g. 'semantic_search,get_chunk') to "
-            "shrink the prompt when a small model gets confused by many tools."
-        ),
-    )
-    local_request_timeout_s: float = Field(
-        default=300.0,
-        gt=0,
-        description="Per-request timeout (seconds) for local model calls.",
-    )
-
     # ── Provider credentials (subclasses override) ─────────────────────────
-    # Env-configured credentials, used when the Job carries none (the OSS
-    # single-user path).
+    # NOTE: the runner no longer reads these — credentials come ONLY from the
+    # Job (job.api_key / job.base_url). These accessors are retained for tests
+    # and diagnostics that introspect a configured key; engines must NOT use
+    # them as a runtime credential fallback.
     @property
     def engine_api_key(self) -> str:
-        """Provider API key, if any is configured in env."""
+        """Provider API key, if any is configured in env. Diagnostics only — not a runtime fallback."""
         return ""
 
     @property
     def engine_base_url(self) -> str:
-        """Provider base URL, if any is configured in env."""
+        """Provider base URL, if any is configured in env. Diagnostics only — not a runtime fallback."""
         return ""
 
 
