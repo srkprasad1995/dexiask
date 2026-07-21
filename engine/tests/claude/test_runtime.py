@@ -84,39 +84,6 @@ async def test_missing_key_everywhere_emits_actionable_error(monkeypatch, tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_local_fallback_bypasses_sdk(monkeypatch, tmp_path):
-    # No key anywhere but a local sidecar configured → the run is dispatched to
-    # the compact local runtime instead of the Claude CLI (whose scaffolding is
-    # far too heavy for a small local model). The SDK boundary must not be hit.
-    from engine_core.local_runtime import LocalOllamaRuntime
-
-    assert isinstance(ClaudeRuntime().local_runtime(), LocalOllamaRuntime)
-
-    captured = _patch_sdk(monkeypatch)
-
-    class CapturingLocal(LocalOllamaRuntime):
-        def __init__(self):
-            self.ctx = None
-
-        async def run(self, ctx):
-            self.ctx = ctx
-            return "sess-local"
-
-    local = CapturingLocal()
-    monkeypatch.setattr(ClaudeRuntime, "local_runtime", lambda self: local)
-    settings = _settings(key="")
-    settings.local_base_url = "http://ollama:11434"
-    settings.local_model = "qwen2.5:1.5b"
-    result = await core_run(
-        _job(tmp_path, apiKey="", model="claude-sonnet-5"),
-        ClaudeRuntime(), lambda e: None, settings,
-    )
-    assert result == "sess-local"
-    assert captured == {}  # ClaudeAgentOptions never constructed
-    assert local.ctx.model == "qwen2.5:1.5b"
-
-
-@pytest.mark.asyncio
 async def test_blank_base_url_is_omitted(monkeypatch, tmp_path):
     captured = _patch_sdk(monkeypatch)
     job = _job(tmp_path, apiKey="ui-key")

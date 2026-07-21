@@ -101,8 +101,6 @@ it directly via semantic + lexical search.
 - **memory** — Go. FS-backed user/repo/global memory exposed as an MCP server, with a
   periodic "dream" consolidation judge. No database.
 - **qdrant / postgres** — vector store and relational store.
-- **ollama** *(optional, `COMPOSE_PROFILES=local`)* — local text + embedding models
-  baked into the image, so everything runs with no API keys.
 
 One **shared `/workspace` mount** is the codebase the agent reads and the indexer
 indexes (read-only for the indexer).
@@ -110,8 +108,7 @@ indexes (read-only for the indexer).
 ## Quickstart
 
 **Prerequisites:** Docker + Docker Compose, an [Anthropic API key](https://console.anthropic.com/),
-and a [Voyage AI key](https://www.voyageai.com/) (for code embeddings) — or **no keys
-at all** with [local mode](#local-mode-no-api-keys) below.
+and a [Voyage AI key](https://www.voyageai.com/) (for code embeddings).
 
 ```bash
 git clone <your-fork> dexiask && cd dexiask
@@ -123,48 +120,6 @@ make up          # or: docker compose up --build -d
 
 Open **http://localhost:25051** and start chatting. `make logs` to tail, `make down`
 to stop, `make clean` to wipe the DB + index.
-
-### Local mode (no API keys)
-
-No Anthropic or Voyage key? Enable the **Ollama sidecar** and run entirely locally:
-
-```bash
-cp .env.example .env
-#  → edit .env: uncomment COMPOSE_PROFILES=local (leave the key vars blank)
-make up
-```
-
-The sidecar serves a small local text model (`qwen2.5:1.5b`) and local code
-embeddings (`qwen3-embedding:0.6b`). Both models are **baked into the sidecar
-image at build time** — the first build downloads ~2 GB; nothing is downloaded
-after the stack is up. With no keys configured the engine and indexer fall back
-to the sidecar automatically (the engine switches to a compact local agent loop
-sized for small models — first answer in ~30s on a laptop CPU, follow-ups in
-seconds); if you later add real keys they take over (hosted keys always win).
-
-Worth knowing:
-
-- **Quality/speed**: a small local model is noticeably less capable than Claude —
-  fine for exploring a codebase, not a Claude replacement. For better answers at
-  a higher resource cost, set a bigger **non-reasoning** model, e.g.
-  `DEXIASK_LOCAL_TEXT_MODEL=qwen2.5:7b` (~4.7 GB). Avoid reasoning models
-  (qwen3, deepseek-r1): they burn the whole turn "thinking" on CPU.
-- **Resources**: runs CPU-only on a regular laptop — ~4 GB free disk for the
-  image and ~3 GB RAM while running. The sidecar pins generation to 4 threads
-  (`DEXIASK_OLLAMA_THREADS`) — counter-intuitively much faster than all cores on
-  laptops. On an NVIDIA GPU host, uncomment the GPU block on the `ollama`
-  service in `docker-compose.yml` for faster responses.
-- **Tools**: the local agent gets every indexer/memory MCP tool by default
-  (`DEXIASK_LOCAL_REMOTE_TOOLS=*`). If a small model stops calling tools and
-  answers from thin air, narrow it to a short list (e.g.
-  `semantic_search,get_chunk,read_range`) — fewer tools are easier to follow.
-- **CPU-only boxes**: set `DEXIASK_DREAM_INTERVAL=0` to skip the hourly memory
-  consolidation model runs.
-- **Re-index on switch**: local and hosted embeddings share a dimension but not a
-  vector space — switching providers requires `make clean` (or a per-repo reindex).
-- Models are overridable via `DEXIASK_LOCAL_TEXT_MODEL` / `DEXIASK_LOCAL_EMBED_MODEL`
-  (image build args; the embedding model must produce `DEXIASK_EMBEDDING_DIM`-sized
-  vectors).
 
 ## Indexing a repository
 
@@ -259,10 +214,8 @@ Everything is env-driven — see `.env.example` for the full list. The essential
 
 | Variable | Purpose |
 |---|---|
-| `COMPOSE_PROFILES=local` | Enable the Ollama sidecar — run with **no API keys** (see [Local mode](#local-mode-no-api-keys)) |
-| `ANTHROPIC_API_KEY` | Claude engine credential (required unless local mode) |
-| `VOYAGE_API_KEY` | Indexer embedding credential (required unless local mode) |
-| `DEXIASK_LOCAL_TEXT_MODEL` / `_LOCAL_EMBED_MODEL` | Models baked into the local sidecar image (defaults `qwen2.5:1.5b` / `qwen3-embedding:0.6b`) |
+| `ANTHROPIC_API_KEY` | Claude engine credential (required) |
+| `VOYAGE_API_KEY` | Indexer embedding credential (required) |
 | `DEXIASK_MODEL` | Claude model for ask mode (default `claude-sonnet-5`) |
 | `DEXIASK_WORKSPACE_PATH` | Host codebase mounted at `/workspace` |
 | `DEXIASK_SESSION_SECRET` / `_TOKEN_ENC_KEY` | Session signing + GitHub-token encryption — enables auth (token login) |
