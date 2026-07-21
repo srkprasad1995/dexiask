@@ -187,8 +187,19 @@ def _search_hits(ctx: IndexerContext, args: dict) -> list[tuple[str, Any]]:
 
 async def semantic_search(ctx: IndexerContext, args: dict) -> str:
     if ctx.embedder is None or ctx.store is None:
+        # Point the agent at the concrete cause and the fallback that still works
+        # off the bare mirror, so it switches to lexical_search in the same turn
+        # rather than dead-ending. The embedder is None when no provider resolved
+        # at startup (build_provider raised and was caught) — which means neither
+        # a hosted key nor the local sidecar is configured.
+        detail = (
+            "no embeddings provider configured (set VOYAGE_API_KEY or "
+            "OPENAI_API_KEY, or enable the local sidecar with COMPOSE_PROFILES=local)"
+            if ctx.embedder is None
+            else "vector store (Qdrant) unavailable"
+        )
         return fmt.render_obj(
-            {"error": "semantic search unavailable: no embedder/store configured"},
+            {"error": f"semantic search unavailable: {detail}. Use lexical_search instead."},
             _fmt(ctx, args),
         )
     limit = int(args.get("limit") or ctx.settings.semantic_search_limit)

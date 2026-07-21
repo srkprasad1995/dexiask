@@ -104,6 +104,66 @@ def test_repos_progress_percent_only_while_embedding(client, service):
     assert "percent" not in entry
 
 
+def _app_with_embedder(sample_repo, tmp_path, embedder, **settings_kw):
+    """A client whose context is wired with (or without) an embedder."""
+    from indexer.app import create_app
+    from indexer.lock import InMemoryLock
+    from indexer.pipeline import InMemoryStateStore
+    from indexer.service import IndexService
+    from indexer.store import QdrantStore
+
+    settings = Settings(
+        workspace_root=str(tmp_path), data_dir=str(tmp_path / "data"), **settings_kw
+    )
+    registry = IndexerConfig(
+        repos=[RepoConfig(id="r", path=str(sample_repo), primary_branch="main")]
+    )
+    store = QdrantStore(location=":memory:")
+    ctx = IndexerContext(settings, registry, store=store, embedder=embedder)
+    service = IndexService(
+        settings, registry, store=store, embedder=embedder,
+        state=InMemoryStateStore(), lock=InMemoryLock(),
+    )
+    return TestClient(create_app(ctx, service))
+
+
+def test_status_reports_embeddings_available(client):
+    """/v1/status reports semantic-search availability so the web UI can decide
+    whether to show the 'using lexical search' banner. The fixture wires a real
+    embedder + store, so embeddings are available."""
+    assert client.get("/v1/status").json()["embeddings"]["available"] is True
+
+
+def test_status_reports_embeddings_unavailable_without_key(sample_repo, tmp_path):
+    """No embeddings key and no local sidecar → the embedder is None
+    (build_provider raises and is caught), so /v1/status reports embeddings
+    unavailable — the signal the web banner keys off — and names no provider."""
+    client = _app_with_embedder(sample_repo, tmp_path, None)
+    emb = client.get("/v1/status").json()["embeddings"]
+    assert emb["available"] is False
+    assert emb["provider"] == ""
+
+
+def test_status_reports_resolved_embedding_provider(sample_repo, tmp_path):
+    """The default provider setting is 'auto', which is meaningless to the UI —
+    status must report the provider 'auto' actually resolved to."""
+    client = _app_with_embedder(
+        sample_repo, tmp_path, FakeProvider(dim=16), voyage_api_key="k"
+    )
+    assert client.get("/v1/status").json()["embeddings"]["provider"] == "voyage"
+
+
+def test_status_reports_local_sidecar_as_provider(sample_repo, tmp_path):
+    """With no hosted key but the local Ollama sidecar configured, 'auto'
+    resolves to it — semantic search stays on with no API key at all."""
+    client = _app_with_embedder(
+        sample_repo, tmp_path, FakeProvider(dim=16), ollama_base_url="http://ollama:11434"
+    )
+    emb = client.get("/v1/status").json()["embeddings"]
+    assert emb["provider"] == "ollama"
+    assert emb["available"] is True
+
+
 def test_status_reports_ready(client):
     assert client.get("/v1/status").json()["status"] == "ready"
 
