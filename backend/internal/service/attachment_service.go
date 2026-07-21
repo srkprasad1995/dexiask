@@ -54,20 +54,26 @@ type attachmentService struct {
 	workspaceRoot  string
 	attachmentRepo repository.AttachmentRepository
 	logger         *logger.Logger
+	maxSize        int64
 }
 
 // NewAttachmentService creates a new AttachmentService. workspaceRoot is the
 // host path mounted at /workspace (DEXIASK_WORKSPACE_MOUNT).
 func NewAttachmentService(workspaceRoot string, repo repository.AttachmentRepository, log *logger.Logger) AttachmentService {
-	return &attachmentService{workspaceRoot: workspaceRoot, attachmentRepo: repo, logger: log}
+	return &attachmentService{
+		workspaceRoot:  workspaceRoot,
+		attachmentRepo: repo,
+		logger:         log,
+		maxSize:        maxAttachmentSize,
+	}
 }
 
 func (s *attachmentService) Store(ctx context.Context, in StoreInput) (*model.Attachment, error) {
 	if in.ConversationID == "" && in.UploadBucket == "" {
 		return nil, pkgerrors.InvalidArgument("conversation_id or upload_bucket is required")
 	}
-	if in.Size > maxAttachmentSize {
-		return nil, pkgerrors.InvalidArgumentf("file exceeds max size of %d bytes", maxAttachmentSize)
+	if in.Size > s.maxSize {
+		return nil, pkgerrors.InvalidArgumentf("file exceeds max size of %d bytes", s.maxSize)
 	}
 
 	safe := sanitizeFilename(in.Filename)
@@ -111,10 +117,17 @@ func (s *attachmentService) Store(ctx context.Context, in StoreInput) (*model.At
 	}
 	defer f.Close()
 
-	written, err := io.Copy(f, in.Reader)
+	// Enforce the cap on the actual byte stream, not just the client-declared
+	// size: read at most maxSize+1 bytes so an oversized (or size-spoofed)
+	// upload is rejected rather than written to disk unbounded.
+	written, err := io.Copy(f, io.LimitReader(in.Reader, s.maxSize+1))
 	if err != nil {
 		os.Remove(absPath)
 		return nil, pkgerrors.Internal("failed to write attachment", err)
+	}
+	if written > s.maxSize {
+		os.Remove(absPath)
+		return nil, pkgerrors.InvalidArgumentf("file exceeds max size of %d bytes", s.maxSize)
 	}
 	if in.Size > 0 && written != in.Size {
 		os.Remove(absPath)
